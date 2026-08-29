@@ -1,0 +1,611 @@
+#!/usr/bin/env bash
+
+# shellcheck disable=SC2016
+# Generated zsh snippets intentionally keep $HOME literal for later expansion.
+
+set -euo pipefail
+
+PROJECT_URL_DEFAULT="https://github.com/canxin121/zsh-dotfiles.git"
+PROJECT_REF_DEFAULT="main"
+
+OH_MY_ZSH_REPO="https://github.com/ohmyzsh/ohmyzsh.git"
+
+PLUGIN_RELS=(
+  "plugins/fzf-tab"
+  "plugins/zsh-autosuggestions"
+  "plugins/zsh-completions"
+  "plugins/zsh-history-substring-search"
+  "plugins/zsh-syntax-highlighting"
+  "themes/powerlevel10k"
+)
+
+PLUGIN_URLS=(
+  "https://github.com/Aloxaf/fzf-tab.git"
+  "https://github.com/zsh-users/zsh-autosuggestions.git"
+  "https://github.com/zsh-users/zsh-completions.git"
+  "https://github.com/zsh-users/zsh-history-substring-search.git"
+  "https://github.com/zsh-users/zsh-syntax-highlighting.git"
+  "https://github.com/romkatv/powerlevel10k.git"
+)
+
+REPO_URL="${ZSH_DOTFILES_REPO_URL:-$PROJECT_URL_DEFAULT}"
+PROJECT_REF="${ZSH_DOTFILES_REF:-$PROJECT_REF_DEFAULT}"
+SOURCE_INSTALL_DIR="${ZSH_DOTFILES_INSTALL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/zsh-dotfiles}"
+
+REPO_ROOT=""
+SOURCE_BOOTSTRAPPED=0
+UPDATE_EXISTING=0
+UPDATE_SOURCE=0
+SKIP_DEPENDENCIES="${ZSH_DOTFILES_SKIP_DEPENDENCIES:-0}"
+DRY_RUN="${ZSH_DOTFILES_DRY_RUN:-0}"
+ZDOTDIR_ROOT="${ZDOTDIR:-$HOME}"
+BACKUP_DIR=""
+
+BEGIN_MARKER="# >>> zsh-dotfiles managed block >>>"
+END_MARKER="# <<< zsh-dotfiles managed block <<<"
+
+usage() {
+  cat <<'EOF'
+Usage: ./install.sh [options]
+
+Install or integrate the zsh-dotfiles configuration without replacing an
+existing ~/.zshrc or ~/.zprofile.
+
+Options:
+  --update                  Update existing Oh My Zsh/plugin/theme checkouts.
+  --update-source           Update a bootstrapped zsh-dotfiles checkout.
+  --skip-dependencies       Do not install Oh My Zsh or custom plugins.
+  --install-dir DIR         Checkout location for curl|bash installation.
+  --repo-url URL            Repository URL used by curl|bash installation.
+  --ref REF                 Branch or tag used by curl|bash installation.
+  --dry-run                 Show planned changes without writing files.
+  -h, --help                Show this help text.
+
+Environment:
+  ZSH_DOTFILES_INSTALL_DIR  Same as --install-dir.
+  ZSH_DOTFILES_REPO_URL     Same as --repo-url.
+  ZSH_DOTFILES_REF          Same as --ref.
+  ZSH_DOTFILES_SKIP_DEPENDENCIES=1
+  ZSH_DOTFILES_DRY_RUN=1
+
+Examples:
+  ./install.sh
+  ./install.sh --update
+  curl -fsSL https://raw.githubusercontent.com/canxin121/zsh-dotfiles/main/install.sh | bash
+EOF
+}
+
+log() {
+  printf '[zsh-dotfiles] %s\n' "$*"
+}
+
+warn() {
+  printf '[zsh-dotfiles] warning: %s\n' "$*" >&2
+}
+
+die() {
+  printf '[zsh-dotfiles] error: %s\n' "$*" >&2
+  exit 1
+}
+
+is_true() {
+  case "${1:-0}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+require_command() {
+  command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
+}
+
+detect_platform() {
+  local system
+  system="$(uname -s 2>/dev/null || printf 'unknown')"
+
+  case "$system" in
+    Darwin) printf 'macOS' ;;
+    Linux)
+      if [[ -r /proc/version ]] && grep -qi microsoft /proc/version; then
+        printf 'Linux (WSL)'
+      else
+        printf 'Linux'
+      fi
+      ;;
+    MINGW*|MSYS*|CYGWIN*) printf 'Windows POSIX shell (%s)' "$system" ;;
+    *) printf '%s' "$system" ;;
+  esac
+}
+
+shell_quote() {
+  local value="$1"
+  value=${value//\'/\'\\\'\'}
+  printf "'%s'" "$value"
+}
+
+normalize_url() {
+  local url="$1"
+  url="${url%.git}"
+  url="${url%/}"
+  printf '%s' "$url"
+}
+
+repo_remote_matches() {
+  local target="$1"
+  local expected="$2"
+  local actual
+
+  actual="$(git -C "$target" config --get remote.origin.url 2>/dev/null || true)"
+  [[ -n "$actual" ]] || return 1
+  [[ "$(normalize_url "$actual")" == "$(normalize_url "$expected")" ]]
+}
+
+detect_local_repo() {
+  local script_path="${BASH_SOURCE[0]:-}"
+  local script_dir
+
+  case "$script_path" in
+    ""|bash|sh|/dev/fd/*|/proc/self/fd/*) return 1 ;;
+  esac
+
+  script_dir="$(cd -P "$(dirname "$script_path")" 2>/dev/null && pwd -P)" || return 1
+  if [[ -r "$script_dir/home/.zshrc" && -r "$script_dir/home/.zprofile" ]]; then
+    printf '%s\n' "$script_dir"
+  fi
+}
+
+clone_repo_safely() {
+  local url="$1"
+  local target="$2"
+  shift 2
+
+  local parent
+  local staging
+
+  parent="$(dirname "$target")"
+  mkdir -p "$parent"
+  staging="$(mktemp -d "$parent/.zsh-dotfiles-clone.XXXXXX")"
+
+  if git clone "$@" "$url" "$staging/repo"; then
+    mv "$staging/repo" "$target"
+    rmdir "$staging" 2>/dev/null || true
+  else
+    rm -rf "$staging"
+    return 1
+  fi
+}
+
+bootstrap_source_checkout() {
+  local existing_remote
+
+  require_command git
+
+  if [[ -e "$SOURCE_INSTALL_DIR" || -L "$SOURCE_INSTALL_DIR" ]]; then
+    [[ -d "$SOURCE_INSTALL_DIR/.git" && -r "$SOURCE_INSTALL_DIR/home/.zshrc" ]] || die \
+      "Install directory exists but is not a zsh-dotfiles checkout: $SOURCE_INSTALL_DIR"
+
+    existing_remote="$(git -C "$SOURCE_INSTALL_DIR" config --get remote.origin.url 2>/dev/null || true)"
+    [[ "$(normalize_url "$existing_remote")" == "$(normalize_url "$REPO_URL")" ]] || die \
+      "Install directory belongs to a different repository: $SOURCE_INSTALL_DIR"
+
+    REPO_ROOT="$(cd -P "$SOURCE_INSTALL_DIR" && pwd -P)"
+    SOURCE_BOOTSTRAPPED=1
+
+    if (( UPDATE_SOURCE )); then
+      log "Updating zsh-dotfiles checkout: $REPO_ROOT"
+      git -C "$REPO_ROOT" pull --ff-only
+    fi
+    return
+  fi
+
+  if is_true "$DRY_RUN"; then
+    die "--dry-run from a remote installer requires a local checkout; run it from the repository"
+  fi
+
+  log "Cloning zsh-dotfiles into $SOURCE_INSTALL_DIR"
+  clone_repo_safely "$REPO_URL" "$SOURCE_INSTALL_DIR" --depth=1 --branch "$PROJECT_REF"
+  REPO_ROOT="$(cd -P "$SOURCE_INSTALL_DIR" && pwd -P)"
+  SOURCE_BOOTSTRAPPED=1
+}
+
+ensure_backup_dir() {
+  if [[ -n "$BACKUP_DIR" ]]; then
+    return
+  fi
+
+  BACKUP_DIR="$HOME/.config/zsh-dotfiles/backups/$(date +%Y%m%d-%H%M%S)"
+  if is_true "$DRY_RUN"; then
+    log "Would create backup directory: $BACKUP_DIR"
+  else
+    umask 077
+    mkdir -p "$BACKUP_DIR"
+  fi
+}
+
+backup_file() {
+  local file="$1"
+  local backup_file_path
+
+  [[ -e "$file" || -L "$file" ]] || return 0
+  ensure_backup_dir
+  backup_file_path="$BACKUP_DIR/$(basename "$file")"
+  if [[ -e "$backup_file_path" ]]; then
+    backup_file_path="$BACKUP_DIR/$(basename "$file").$(date +%s)"
+  fi
+
+  if is_true "$DRY_RUN"; then
+    log "Would back up $file -> $backup_file_path"
+  else
+    cp -p "$file" "$backup_file_path"
+  fi
+}
+
+strip_managed_block() {
+  local file="$1"
+
+  awk -v begin="$BEGIN_MARKER" -v end="$END_MARKER" '
+    $0 == begin { inside = 1; next }
+    $0 == end { inside = 0; next }
+    !inside { print }
+  ' "$file"
+}
+
+file_has_user_content() {
+  local file="$1"
+  local content_file
+
+  [[ -e "$file" || -L "$file" ]] || return 1
+  [[ -r "$file" ]] || die "Cannot read existing zsh config: $file"
+  [[ -d "$file" ]] && die "Expected a file but found a directory: $file"
+
+  content_file="$(mktemp "${TMPDIR:-/tmp}/zsh-dotfiles-content.XXXXXX")"
+  strip_managed_block "$file" > "$content_file"
+  if grep -q '[^[:space:]]' "$content_file"; then
+    rm -f "$content_file"
+    return 0
+  fi
+
+  rm -f "$content_file"
+  return 1
+}
+
+config_has_omz_source() {
+  local file="$1"
+  grep -Eiq 'oh-my-zsh[.]sh' "$file"
+}
+
+config_has_other_framework() {
+  local file="$1"
+  grep -Eiq '(^|[^[:alnum:]_])(zinit|zplug|zgen|antigen|zimfw|sheldon|prezto|zcomet)([^[:alnum:]_]|$)' "$file" && return 0
+  grep -Eiq '^[[:space:]]*(ZSH_THEME|plugins)[[:space:]]*=' "$file"
+}
+
+file_mode() {
+  local file="$1"
+  local mode
+
+  if mode="$(stat -c '%a' "$file" 2>/dev/null)"; then
+    printf '%s' "$mode"
+  elif mode="$(stat -f '%Lp' "$file" 2>/dev/null)"; then
+    printf '%s' "$mode"
+  fi
+}
+
+render_managed_block() {
+  local kind="$1"
+  local source_file="$2"
+  local mode="$3"
+  local load_local="$4"
+  local bootstrap_omz="$5"
+  local quoted_source
+
+  quoted_source="$(shell_quote "$source_file")"
+
+  printf '%s\n' "$BEGIN_MARKER"
+  printf '# zsh-dotfiles: mode=%s\n' "$mode"
+  printf '# zsh-dotfiles: load-local=%s\n' "$load_local"
+  printf '# zsh-dotfiles: bootstrap-omz=%s\n' "$bootstrap_omz"
+  printf 'typeset -g ZSH_DOTFILES_MODE=%s\n' "$mode"
+  printf 'typeset -g ZSH_DOTFILES_BOOTSTRAP_OMZ=%s\n' "$bootstrap_omz"
+  printf 'if [[ -r %s ]]; then\n' "$quoted_source"
+  printf '  source %s\n' "$quoted_source"
+  printf 'fi\n'
+
+  if [[ "$kind" == "zshrc" && "$load_local" == "true" ]]; then
+    printf 'if [[ -r "$HOME/.zshrc.local" ]]; then\n'
+    printf '  source "$HOME/.zshrc.local"\n'
+    printf 'fi\n'
+  elif [[ "$kind" == "zprofile" && "$load_local" == "true" ]]; then
+    printf 'if [[ -r "$HOME/.zprofile.local" ]]; then\n'
+    printf '  source "$HOME/.zprofile.local"\n'
+    printf 'fi\n'
+  fi
+
+  printf '%s\n' "$END_MARKER"
+}
+
+install_managed_block() {
+  local file="$1"
+  local source_file="$2"
+  local kind="$3"
+  local mode="$4"
+  local load_local="$5"
+  local bootstrap_omz="$6"
+  local content_file
+  local mode_before
+  local source_is_destination=0
+
+  if is_true "$DRY_RUN"; then
+    log "Would maintain managed block in $file"
+    return
+  fi
+
+  [[ -r "$source_file" ]] || die "Missing tracked source file: $source_file"
+  [[ ! -d "$file" ]] || die "Expected a file but found a directory: $file"
+
+  content_file="$(mktemp "${file}.zsh-dotfiles.XXXXXX")"
+  if [[ -L "$file" && "$file" -ef "$source_file" ]]; then
+    source_is_destination=1
+    # The old installer could make ~/.zshrc or ~/.zprofile point directly at
+    # the tracked source file. Detach that special case so the managed block
+    # cannot source the file that is currently sourcing it.
+    : > "$content_file"
+  elif [[ -e "$file" || -L "$file" ]]; then
+    strip_managed_block "$file" > "$content_file"
+  else
+    : > "$content_file"
+  fi
+
+  if [[ -s "$content_file" ]]; then
+    printf '\n' >> "$content_file"
+  fi
+  render_managed_block "$kind" "$source_file" "$mode" "$load_local" "$bootstrap_omz" >> "$content_file"
+
+  if [[ -e "$file" || -L "$file" ]] && cmp -s "$content_file" "$file"; then
+    rm -f "$content_file"
+    log "Already up to date: $file"
+    return
+  fi
+
+  backup_file "$file"
+  mode_before=""
+  if [[ -f "$file" && ! -L "$file" ]]; then
+    mode_before="$(file_mode "$file")"
+  fi
+
+  if [[ -L "$file" ]]; then
+    if (( source_is_destination )); then
+      warn "$file points to the tracked source; replacing only this self-link with a managed file"
+      mv "$content_file" "$file"
+    else
+      warn "$file is a symlink; updating its target in place"
+      cat "$content_file" > "$file"
+      rm -f "$content_file"
+    fi
+  else
+    mv "$content_file" "$file"
+    if [[ -n "$mode_before" ]]; then
+      chmod "$mode_before" "$file"
+    fi
+  fi
+
+  log "Updated managed block: $file"
+}
+
+choose_zshrc_settings() {
+  local file="$1"
+
+  ZSHRC_MODE="integrate"
+  ZSHRC_LOAD_LOCAL="false"
+  ZSHRC_BOOTSTRAP_OMZ="true"
+
+  if ! file_has_user_content "$file"; then
+    ZSHRC_MODE="bootstrap"
+    ZSHRC_LOAD_LOCAL="true"
+    return
+  fi
+
+  if [[ -e "$file" || -L "$file" ]] && grep -Eq '^# zsh-dotfiles: load-local=true$' "$file"; then
+    ZSHRC_LOAD_LOCAL="true"
+  fi
+
+  if config_has_other_framework "$file" && ! config_has_omz_source "$file"; then
+    ZSHRC_BOOTSTRAP_OMZ="false"
+  fi
+}
+
+choose_zprofile_settings() {
+  local file="$1"
+
+  ZPROFILE_MODE="integrate"
+  ZPROFILE_LOAD_LOCAL="false"
+
+  if ! file_has_user_content "$file"; then
+    ZPROFILE_MODE="bootstrap"
+    ZPROFILE_LOAD_LOCAL="true"
+    return
+  fi
+
+  if [[ -e "$file" || -L "$file" ]] && grep -Eq '^# zsh-dotfiles: load-local=true$' "$file"; then
+    ZPROFILE_LOAD_LOCAL="true"
+  fi
+}
+
+configure_shell_files() {
+  local zshrc_file="$ZDOTDIR_ROOT/.zshrc"
+  local zprofile_file="$ZDOTDIR_ROOT/.zprofile"
+
+  if is_true "$DRY_RUN"; then
+    log "Would ensure zsh config directory exists: $ZDOTDIR_ROOT"
+  else
+    mkdir -p "$ZDOTDIR_ROOT"
+  fi
+
+  choose_zshrc_settings "$zshrc_file"
+  choose_zprofile_settings "$zprofile_file"
+
+  install_managed_block \
+    "$zshrc_file" \
+    "$REPO_ROOT/home/.zshrc" \
+    "zshrc" \
+    "$ZSHRC_MODE" \
+    "$ZSHRC_LOAD_LOCAL" \
+    "$ZSHRC_BOOTSTRAP_OMZ"
+
+  install_managed_block \
+    "$zprofile_file" \
+    "$REPO_ROOT/home/.zprofile" \
+    "zprofile" \
+    "$ZPROFILE_MODE" \
+    "$ZPROFILE_LOAD_LOCAL" \
+    "false"
+}
+
+install_git_repo() {
+  local label="$1"
+  local target="$2"
+  local url="$3"
+  local kind="$4"
+
+  if is_true "$DRY_RUN"; then
+    if [[ -e "$target" || -L "$target" ]]; then
+      log "Would inspect existing $label: $target"
+    else
+      log "Would clone $label -> $target"
+    fi
+    return
+  fi
+
+  if [[ -d "$target/.git" ]]; then
+    if repo_remote_matches "$target" "$url"; then
+      if (( UPDATE_EXISTING )); then
+        log "Updating $label: $target"
+        git -C "$target" pull --ff-only
+      else
+        log "Keeping existing checkout: $target"
+      fi
+    else
+      warn "Keeping existing checkout with a different remote: $target"
+    fi
+    return
+  fi
+
+  if [[ -e "$target" || -L "$target" ]]; then
+    if [[ "$kind" == "oh-my-zsh" && -r "$target/oh-my-zsh.sh" ]]; then
+      log "Keeping existing Oh My Zsh installation: $target"
+      return
+    fi
+    if [[ "$kind" == "plugin" && -d "$target" ]]; then
+      log "Keeping existing plugin/theme directory: $target"
+      return
+    fi
+    die "Refusing to replace an existing path: $target"
+  fi
+
+  log "Cloning $label -> $target"
+  clone_repo_safely "$url" "$target" --depth=1
+}
+
+install_dependencies() {
+  local oh_my_zsh_dir
+  local zsh_custom_dir
+  local index
+  local rel
+  local url
+  local target
+
+  if is_true "$SKIP_DEPENDENCIES"; then
+    log "Skipping Oh My Zsh/plugin installation"
+    return
+  fi
+
+  require_command git
+  oh_my_zsh_dir="${ZSH:-$HOME/.oh-my-zsh}"
+  zsh_custom_dir="${ZSH_CUSTOM:-$oh_my_zsh_dir/custom}"
+
+  install_git_repo "Oh My Zsh" "$oh_my_zsh_dir" "$OH_MY_ZSH_REPO" "oh-my-zsh"
+  if is_true "$DRY_RUN"; then
+    log "Would ensure custom plugin directory exists: $zsh_custom_dir"
+  else
+    mkdir -p "$zsh_custom_dir"
+  fi
+
+  for index in "${!PLUGIN_RELS[@]}"; do
+    rel="${PLUGIN_RELS[$index]}"
+    url="${PLUGIN_URLS[$index]}"
+    target="$zsh_custom_dir/$rel"
+    install_git_repo "$rel" "$target" "$url" "plugin"
+  done
+}
+
+parse_args() {
+  while (($#)); do
+    case "$1" in
+      --update)
+        UPDATE_EXISTING=1
+        ;;
+      --update-source)
+        UPDATE_SOURCE=1
+        ;;
+      --skip-dependencies|--no-dependencies)
+        SKIP_DEPENDENCIES=1
+        ;;
+      --install-dir)
+        shift
+        (($#)) || die "--install-dir requires a value"
+        SOURCE_INSTALL_DIR="$1"
+        ;;
+      --repo-url)
+        shift
+        (($#)) || die "--repo-url requires a value"
+        REPO_URL="$1"
+        ;;
+      --ref)
+        shift
+        (($#)) || die "--ref requires a value"
+        PROJECT_REF="$1"
+        ;;
+      --dry-run)
+        DRY_RUN=1
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        usage >&2
+        die "Unknown argument: $1"
+        ;;
+    esac
+    shift
+  done
+}
+
+main() {
+  local local_root
+
+  parse_args "$@"
+  require_command bash
+  require_command zsh
+
+  local_root="$(detect_local_repo || true)"
+  if [[ -n "$local_root" ]]; then
+    REPO_ROOT="$local_root"
+  else
+    bootstrap_source_checkout
+  fi
+
+  log "Platform: $(detect_platform)"
+  log "Source root: $REPO_ROOT"
+  log "Config directory: $ZDOTDIR_ROOT"
+
+  install_dependencies
+  configure_shell_files
+
+  if [[ "$SOURCE_BOOTSTRAPPED" == "1" && "$UPDATE_SOURCE" == "0" ]]; then
+    log "Source checkout is managed at $REPO_ROOT; use --update-source to update it"
+  fi
+  log "Install complete. Start a new shell or run: exec zsh"
+}
+
+main "$@"

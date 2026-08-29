@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+check() {
+  local label="$1"
+  local cmd="$2"
+
+  if command -v "$cmd" >/dev/null 2>&1; then
+    printf '[ok]   %-18s %s\n' "$label" "$(command -v "$cmd")"
+  else
+    printf '[miss] %-18s %s\n' "$label" "$cmd"
+  fi
+}
+
+check_any() {
+  local label="$1"
+  shift
+
+  for cmd in "$@"; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+      printf '[ok]   %-18s %s\n' "$label" "$(command -v "$cmd")"
+      return
+    fi
+  done
+
+  printf '[miss] %-18s %s\n' "$label" "$*"
+}
+
+printf 'Host: %s %s\n' "$(uname -s)" "$(uname -m)"
+printf 'Shell: %s\n' "${SHELL:-unknown}"
+
+check "zsh" "zsh"
+check "git" "git"
+check "curl" "curl"
+check_any "fd" "fd" "fdfind"
+check_any "bat" "bat" "batcat"
+check_any "eza" "eza" "exa"
+check "fzf" "fzf"
+check "ripgrep" "rg"
+check "btop" "btop"
+check "lazygit" "lazygit"
+check "tldr" "tldr"
+check "code" "code"
+

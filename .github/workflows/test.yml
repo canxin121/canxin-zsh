@@ -1,0 +1,120 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  posix:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install test dependencies on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git shellcheck zsh
+
+      - name: Install ShellCheck on macOS
+        if: runner.os == 'macOS'
+        run: brew install shellcheck
+
+      - name: Check shell syntax
+        run: |
+          bash -n install.sh bin/zsh-doctor tests/test-install.sh
+          for file in home/.zprofile home/.zshrc home/.p10k.zsh zsh/rc/common.zsh; do
+            zsh -n "$file"
+          done
+
+      - name: Run ShellCheck
+        run: shellcheck install.sh bin/zsh-doctor tests/test-install.sh
+
+      - name: Run isolated installer tests
+        run: bash tests/test-install.sh
+
+      - name: Run real dependency installation smoke test
+        env:
+          TEST_HOME: ${{ runner.temp }}/zsh-dotfiles-real-home
+        run: |
+          rm -rf "$TEST_HOME"
+          mkdir -p "$TEST_HOME"
+          trap 'rm -rf "$TEST_HOME"' EXIT
+          HOME="$TEST_HOME" ZDOTDIR="$TEST_HOME" ./install.sh
+          test -r "$TEST_HOME/.zshrc"
+          test -r "$TEST_HOME/.zprofile"
+          test -r "$TEST_HOME/.oh-my-zsh/oh-my-zsh.sh"
+          env -u FPATH HOME="$TEST_HOME" ZDOTDIR="$TEST_HOME" zsh -d -i -c '(( $+functions[omz] ))'
+
+  windows-msys2:
+    name: windows-msys2
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check PowerShell forwarding script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$env:GITHUB_WORKSPACE/install.ps1",
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            exit 1
+          }
+
+      - name: Install MSYS2 zsh toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          update: true
+          install: >-
+            git
+            zsh
+            curl
+            shellcheck
+
+      - name: Check syntax and run isolated tests
+        shell: msys2 {0}
+        run: |
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
+          bash -n install.sh bin/zsh-doctor tests/test-install.sh
+          for file in home/.zprofile home/.zshrc home/.p10k.zsh zsh/rc/common.zsh; do
+            zsh -n "$file"
+          done
+          shellcheck install.sh bin/zsh-doctor tests/test-install.sh
+          bash tests/test-install.sh
+
+      - name: Run real dependency installation smoke test
+        shell: msys2 {0}
+        env:
+          TEST_HOME: /tmp/zsh-dotfiles-real-home
+        run: |
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
+          rm -rf "$TEST_HOME"
+          mkdir -p "$TEST_HOME"
+          trap 'rm -rf "$TEST_HOME"' EXIT
+          HOME="$TEST_HOME" ZDOTDIR="$TEST_HOME" ./install.sh
+          test -r "$TEST_HOME/.zshrc"
+          test -r "$TEST_HOME/.zprofile"
+          test -r "$TEST_HOME/.oh-my-zsh/oh-my-zsh.sh"
+          env -u FPATH HOME="$TEST_HOME" ZDOTDIR="$TEST_HOME" zsh -d -i -c '(( $+functions[omz] ))'

@@ -1,0 +1,21 @@
+.DS_Store
+*.zwc
+.zcompdump*
+
+# Machine-specific configuration and shell history
+*.local
+.zsh_history
+
+# Environment files and credentials
+.env
+.env.*
+!.env.example
+.netrc
+.aws/
+.ssh/
+
+# Private keys and credential containers
+*.pem
+*.key
+*.p12
+*.pfx
