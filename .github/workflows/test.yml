@@ -91,7 +91,6 @@ jobs:
             git
             zsh
             curl
-            shellcheck
 
       - name: Check syntax and run isolated tests
         shell: msys2 {0}
@@ -101,7 +100,9 @@ jobs:
           for file in home/.zprofile home/.zshrc home/.p10k.zsh zsh/rc/common.zsh; do
             zsh -n "$file"
           done
-          shellcheck install.sh bin/zsh-doctor tests/test-install.sh
+          # ShellCheck is not packaged in the MSYS2 repositories; it runs in
+          # both Linux and macOS jobs above. Windows still runs all zsh/bash
+          # syntax and installer integration tests here.
           bash tests/test-install.sh
 
       - name: Run real dependency installation smoke test
