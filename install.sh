@@ -99,6 +99,16 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
 }
 
+is_symlink() {
+  [[ -L "$1" ]] && return 0
+  command -v readlink >/dev/null 2>&1 || return 1
+  [[ -n "$(readlink "$1" 2>/dev/null || true)" ]]
+}
+
+path_exists() {
+  [[ -e "$1" ]] || is_symlink "$1"
+}
+
 detect_platform() {
   local system
   system="$(uname -s 2>/dev/null || printf 'unknown')"
@@ -180,7 +190,7 @@ bootstrap_source_checkout() {
 
   require_command git
 
-  if [[ -e "$SOURCE_INSTALL_DIR" || -L "$SOURCE_INSTALL_DIR" ]]; then
+  if path_exists "$SOURCE_INSTALL_DIR"; then
     [[ -d "$SOURCE_INSTALL_DIR/.git" && -r "$SOURCE_INSTALL_DIR/home/.zshrc" ]] || die \
       "Install directory exists but is not a zsh-dotfiles checkout: $SOURCE_INSTALL_DIR"
 
@@ -226,7 +236,7 @@ backup_file() {
   local file="$1"
   local backup_file_path
 
-  [[ -e "$file" || -L "$file" ]] || return 0
+  path_exists "$file" || return 0
   ensure_backup_dir
   backup_file_path="$BACKUP_DIR/$(basename "$file")"
   if [[ -e "$backup_file_path" ]]; then
@@ -254,7 +264,7 @@ file_has_user_content() {
   local file="$1"
   local content_file
 
-  [[ -e "$file" || -L "$file" ]] || return 1
+  path_exists "$file" || return 1
   [[ -r "$file" ]] || die "Cannot read existing zsh config: $file"
   [[ -d "$file" ]] && die "Expected a file but found a directory: $file"
 
@@ -344,13 +354,13 @@ install_managed_block() {
   [[ ! -d "$file" ]] || die "Expected a file but found a directory: $file"
 
   content_file="$(mktemp "${file}.zsh-dotfiles.XXXXXX")"
-  if [[ -L "$file" && "$file" -ef "$source_file" ]]; then
+  if is_symlink "$file" && [[ "$file" -ef "$source_file" ]]; then
     source_is_destination=1
     # The old installer could make ~/.zshrc or ~/.zprofile point directly at
     # the tracked source file. Detach that special case so the managed block
     # cannot source the file that is currently sourcing it.
     : > "$content_file"
-  elif [[ -e "$file" || -L "$file" ]]; then
+  elif path_exists "$file"; then
     strip_managed_block "$file" > "$content_file"
   else
     : > "$content_file"
@@ -361,7 +371,7 @@ install_managed_block() {
   fi
   render_managed_block "$kind" "$source_file" "$mode" "$load_local" "$bootstrap_omz" >> "$content_file"
 
-  if [[ -e "$file" || -L "$file" ]] && cmp -s "$content_file" "$file"; then
+  if path_exists "$file" && cmp -s "$content_file" "$file"; then
     rm -f "$content_file"
     log "Already up to date: $file"
     return
@@ -369,11 +379,11 @@ install_managed_block() {
 
   backup_file "$file"
   mode_before=""
-  if [[ -f "$file" && ! -L "$file" ]]; then
+  if [[ -f "$file" ]] && ! is_symlink "$file"; then
     mode_before="$(file_mode "$file")"
   fi
 
-  if [[ -L "$file" ]]; then
+  if is_symlink "$file"; then
     if (( source_is_destination )); then
       warn "$file points to the tracked source; replacing only this self-link with a managed file"
       mv "$content_file" "$file"
@@ -405,7 +415,7 @@ choose_zshrc_settings() {
     return
   fi
 
-  if [[ -e "$file" || -L "$file" ]] && grep -Eq '^# zsh-dotfiles: load-local=true$' "$file"; then
+  if path_exists "$file" && grep -Eq '^# zsh-dotfiles: load-local=true$' "$file"; then
     ZSHRC_LOAD_LOCAL="true"
   fi
 
@@ -426,7 +436,7 @@ choose_zprofile_settings() {
     return
   fi
 
-  if [[ -e "$file" || -L "$file" ]] && grep -Eq '^# zsh-dotfiles: load-local=true$' "$file"; then
+  if path_exists "$file" && grep -Eq '^# zsh-dotfiles: load-local=true$' "$file"; then
     ZPROFILE_LOAD_LOCAL="true"
   fi
 }
@@ -468,7 +478,7 @@ install_git_repo() {
   local kind="$4"
 
   if is_true "$DRY_RUN"; then
-    if [[ -e "$target" || -L "$target" ]]; then
+    if path_exists "$target"; then
       log "Would inspect existing $label: $target"
     else
       log "Would clone $label -> $target"
@@ -490,7 +500,7 @@ install_git_repo() {
     return
   fi
 
-  if [[ -e "$target" || -L "$target" ]]; then
+  if path_exists "$target"; then
     if [[ "$kind" == "oh-my-zsh" && -r "$target/oh-my-zsh.sh" ]]; then
       log "Keeping existing Oh My Zsh installation: $target"
       return
