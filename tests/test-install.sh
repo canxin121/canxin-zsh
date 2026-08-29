@@ -63,6 +63,10 @@ new_home() {
   mktemp -d "${TMPDIR:-/tmp}/zsh-dotfiles-test.XXXXXX"
 }
 
+is_test_symlink() {
+  [[ -L "$1" ]] || [[ -n "$(readlink "$1" 2>/dev/null || true)" ]]
+}
+
 TEST_HOMES=()
 cleanup() {
   local home_dir
@@ -191,10 +195,14 @@ test_symlink_target_is_preserved() {
   mkdir -p "$(dirname "$config_target")"
   printf '%s\n' 'typeset -g TEST_SYMLINK_CONFIG=preserved' > "$config_target"
   ln -s "$config_target" "$home_dir/.zshrc"
+  if ! is_test_symlink "$home_dir/.zshrc"; then
+    printf '%s\n' 'skipping symlink preservation test: this runner cannot create symlinks'
+    return
+  fi
 
   run_installer "$home_dir"
 
-  [[ -L "$home_dir/.zshrc" ]] || fail "installer replaced the existing .zshrc symlink"
+  is_test_symlink "$home_dir/.zshrc" || fail "installer replaced the existing .zshrc symlink"
   assert_file_contains "$config_target" 'TEST_SYMLINK_CONFIG=preserved'
   assert_count "$config_target" '# >>> zsh-dotfiles managed block >>>' 1
 }
@@ -207,10 +215,16 @@ test_symlink_to_tracked_source_is_detached() {
   source_file="$TEST_ROOT/home/.zshrc"
 
   ln -s "$source_file" "$home_dir/.zshrc"
+  if ! is_test_symlink "$home_dir/.zshrc"; then
+    printf '%s\n' 'skipping self-link migration test: this runner cannot create symlinks'
+    return
+  fi
 
   run_installer "$home_dir"
 
-  [[ ! -L "$home_dir/.zshrc" ]] || fail "installer kept a self-referential .zshrc symlink"
+  [[ ! -L "$home_dir/.zshrc" ]] &&
+    [[ -z "$(readlink "$home_dir/.zshrc" 2>/dev/null || true)" ]] ||
+    fail "installer kept a self-referential .zshrc symlink"
   assert_file_contains "$home_dir/.zshrc" "$source_file"
   assert_count "$home_dir/.zshrc" '# >>> zsh-dotfiles managed block >>>' 1
   assert_count "$source_file" '# >>> zsh-dotfiles managed block >>>' 0

@@ -105,6 +105,23 @@ is_symlink() {
   [[ -n "$(readlink "$1" 2>/dev/null || true)" ]]
 }
 
+symlink_points_to() {
+  local link="$1"
+  local target="$2"
+  local link_target
+
+  [[ "$link" -ef "$target" ]] && return 0
+  command -v readlink >/dev/null 2>&1 || return 1
+  link_target="$(readlink "$link" 2>/dev/null || true)"
+  [[ -n "$link_target" ]] || return 1
+  [[ "$link_target" == "$target" ]] && return 0
+
+  if [[ "$link_target" != /* ]]; then
+    link_target="$(dirname "$link")/$link_target"
+  fi
+  [[ "$link_target" == "$target" ]]
+}
+
 path_exists() {
   [[ -e "$1" ]] || is_symlink "$1"
 }
@@ -354,7 +371,7 @@ install_managed_block() {
   [[ ! -d "$file" ]] || die "Expected a file but found a directory: $file"
 
   content_file="$(mktemp "${file}.zsh-dotfiles.XXXXXX")"
-  if is_symlink "$file" && [[ "$file" -ef "$source_file" ]]; then
+  if is_symlink "$file" && symlink_points_to "$file" "$source_file"; then
     source_is_destination=1
     # The old installer could make ~/.zshrc or ~/.zprofile point directly at
     # the tracked source file. Detach that special case so the managed block
