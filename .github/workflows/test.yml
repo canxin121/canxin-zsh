@@ -88,6 +88,7 @@ jobs:
           msystem: MSYS
           update: true
           install: >-
+            diffutils
             git
             zsh
             curl
