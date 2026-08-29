@@ -222,9 +222,9 @@ test_symlink_to_tracked_source_is_detached() {
 
   run_installer "$home_dir"
 
-  [[ ! -L "$home_dir/.zshrc" ]] &&
-    [[ -z "$(readlink "$home_dir/.zshrc" 2>/dev/null || true)" ]] ||
+  if is_test_symlink "$home_dir/.zshrc"; then
     fail "installer kept a self-referential .zshrc symlink"
+  fi
   assert_file_contains "$home_dir/.zshrc" "$source_file"
   assert_count "$home_dir/.zshrc" '# >>> zsh-dotfiles managed block >>>' 1
   assert_count "$source_file" '# >>> zsh-dotfiles managed block >>>' 0
