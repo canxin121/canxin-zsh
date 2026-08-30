@@ -1,18 +1,31 @@
 # canxin-zsh
 
-一个跨机器的 zsh + Oh My Zsh 配置，包含 prompt、主题、插件和常用命令行工具的适配。
+[![Tests](https://github.com/canxin121/canxin-zsh/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/canxin121/canxin-zsh/actions/workflows/test.yml)
 
-安装器优先考虑保留用户已有配置：它不会直接替换 `~/.zshrc`、`~/.zprofile` 或 `~/.p10k.zsh`，而是在 zsh 配置末尾维护一个可重复更新的 managed block。历史版本使用的 `zsh-dotfiles` marker 和本地备份目录会继续兼容，以免升级时重复加载配置。
+一套可以在 macOS、Linux、WSL、MSYS2 和 Cygwin 之间复用的 zsh 配置与安装器。
 
-## 一键安装
+`canxin-zsh` 把常用的 shell 能力放在一起：
 
-在 macOS、Linux、WSL、MSYS2 或 Cygwin 的 zsh/bash 环境中运行：
+- Oh My Zsh、Powerlevel10k 和常用插件；
+- `fzf`、`ripgrep`、`fd`、`eza`、`bat` 等命令行工具；
+- 一组常用 alias、历史记录、补全和交互式快捷键；
+- 一个会识别现有配置、尽量避免覆盖用户设置的跨平台安装器。
+
+它适合想在多台机器上快速得到相近 zsh 工作环境的人。它不是完整的操作系统配置管理器，也不会强行接管已经由其他 zsh 框架管理的配置；原生 Windows PowerShell 本身也不提供 zsh，需要先使用 WSL、MSYS2 或 Cygwin。
+
+## 快速安装
+
+### macOS、Linux、WSL、MSYS2
+
+在对应的终端执行：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.sh | bash
 ```
 
-也可以先克隆后运行：
+脚本会自动检查并尝试补齐 `zsh`、`git`、`curl`、CA 证书和默认工具集。执行远程命令本身需要当前环境已经有 `curl` 和 `bash`；如果没有，可以先克隆仓库，或通过下方的 PowerShell 转发方式下载脚本。
+
+也可以使用本地 checkout：
 
 ```bash
 git clone https://github.com/canxin121/canxin-zsh.git
@@ -20,196 +33,223 @@ cd canxin-zsh
 ./install.sh
 ```
 
-远程一键安装会把本仓库放到：
+### Windows PowerShell
 
-```text
-${XDG_DATA_HOME:-~/.local/share}/canxin-zsh
-```
-
-新安装默认使用 `${XDG_DATA_HOME:-~/.local/share}/canxin-zsh`；如果检测到旧版本已经存在的 `zsh-dotfiles` checkout，安装器会继续复用它，不会重复下载或破坏已有配置。
-
-在已经克隆的目录中运行 `./install.sh` 时，则直接使用当前目录作为配置源。
-
-## Windows 支持
-
-Windows 原生 PowerShell 本身不提供 zsh，因此推荐使用 WSL。也支持已经安装 zsh 的 MSYS2 或 Cygwin。
-
-WSL Ubuntu（PowerShell 方式不要求 WSL 预先安装 `curl`）：
-
-```bash
-sudo apt update
-sudo apt install -y git curl zsh
-curl -fsSL https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.sh | bash
-```
-
-MSYS2：
-
-```bash
-pacman -S --needed git curl zsh
-curl -fsSL https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.sh | bash
-```
-
-Cygwin 用户请在 Cygwin 安装器中选择 `git`、`curl` 和 `zsh`，然后在 Cygwin 终端运行上面的命令。Cygwin 的系统包需要通过 Cygwin 安装器维护；安装脚本不会猜测或替换 Cygwin 安装器。单独的 Git Bash 通常没有 zsh；安装器会检测到这一点并给出明确错误，不会修改配置。
-
-如果希望从 PowerShell 启动，仓库也提供了一个小型转发脚本：
+PowerShell 只负责下载并转发安装脚本，实际安装会发生在 WSL、MSYS2 或 Cygwin 中：
 
 ```powershell
 irm https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.ps1 | iex
 ```
 
-它会先用 PowerShell 下载脚本，再优先交给 WSL，其次交给 `bash.exe`，所以 WSL/MSYS2 中不必预先安装 `curl`。实际配置仍然安装在 WSL/MSYS2/Cygwin 的 zsh 环境中。
+`install.ps1` 会优先使用 `wsl.exe`，其次使用 `bash.exe`。因此，通过 WSL 或 MSYS2 转发时不要求目标环境预先安装 `curl`；目标环境仍然需要有可用的 zsh 运行环境。这个命令不会自动安装 WSL，也不会让原生 PowerShell 变成 zsh。
 
-## 系统依赖自动安装
-
-默认情况下，安装器会先检测并尝试自动安装下面这套基础工具；它们不再作为安装界面里的“一堆可选项”：
-
-- 必需依赖：`zsh`、`git`、`curl` 和 CA 证书；
-- 默认工具集：`fzf`、`ripgrep`、`fd`、`eza`、`bat`、`btop`、`lazygit`、`tldr`（可用包名 `tealdeer` 安装）。
-
-支持的系统包管理器包括：
-
-- macOS：已安装 Homebrew 时使用 `brew`；macOS 自带的 `zsh`、`git`、`curl` 可直接使用。没有 Homebrew 时不会静默安装整套 Homebrew，而是保留系统自带能力并明确提示默认工具集无法全部补齐；
-- Debian/Ubuntu/WSL：`apt-get`；
-- Fedora/RHEL 系：`dnf` 或 `yum`；
-- Arch/MSYS2：`pacman`；
-- Alpine：`apk`；
-- openSUSE：`zypper`。
-
-安装必需系统包时失败会停止；默认工具集会逐个平台尝试安装，某个工具在当前发行版没有对应包时只会警告并继续，不会让整个 zsh 配置失败。需要权限时使用现有的 `sudo` 或 `doas`，不会把密码写入文件。系统包安装和 Oh My Zsh/plugin checkout 都只在缺少时执行；已有 checkout 不会被另一个远程仓库覆盖。
-
-如果希望完全手动管理依赖，可以使用：
+安装完成后，重新打开终端，或运行：
 
 ```bash
-./install.sh --skip-dependencies       # 跳过系统包、Oh My Zsh 和插件/主题
-./install.sh --no-system-dependencies  # 只跳过系统包管理器，仍可安装 Oh My Zsh/plugin
-./install.sh --minimal                 # 只安装 zsh/git/curl 等必需依赖，不安装默认工具集
+exec zsh
 ```
+
+## 支持的平台与边界
+
+| 环境 | 状态 | 说明 |
+| --- | --- | --- |
+| macOS | 支持 | 优先使用系统已有命令；如果安装了 Homebrew，安装器也会用它补齐工具集。 |
+| Debian / Ubuntu / WSL | 支持 | 使用 `apt-get`，会自动安装缺少的系统依赖和默认工具集。 |
+| Fedora / RHEL | 支持 | 使用 `dnf` 或 `yum`。 |
+| Arch Linux | 支持 | 使用 `pacman`。 |
+| Alpine Linux | 支持 | 使用 `apk`。 |
+| openSUSE | 支持 | 使用 `zypper`。 |
+| MSYS2 | 支持 | 使用 MSYS2 的 `pacman`，建议从 MSYS2 终端运行。 |
+| Cygwin | 支持但需要预先准备 | 请先用 Cygwin 安装器选择 `git`、`curl` 和 `zsh`；Cygwin 的系统包由其安装器维护，本项目不会替代它。 |
+| 原生 Windows PowerShell | 不作为 zsh 运行环境 | 请先安装并进入 WSL、MSYS2 或 Cygwin。 |
+| 单独的 Git Bash | 通常不支持 | Git Bash 一般没有 zsh；它可以作为下载工具，但不能代替 zsh 运行环境。 |
+
+macOS 通常自带 zsh 和 curl，git 可能需要先安装 Xcode Command Line Tools。没有 Homebrew 时，安装器不会静默安装 Homebrew；默认工具集中无法通过系统包管理器补齐的项目会给出警告并继续完成 shell 配置。Cygwin 也可能需要手动安装默认工具集。
 
 ## 安装器会做什么
 
-1. 检查 `bash`、`zsh`，并识别 macOS、Linux、WSL 和 Windows POSIX shell 环境。
-2. 在支持的包管理器中补齐缺少的必需依赖和默认工具集。
-3. 如果缺少 Oh My Zsh，则克隆到 `$ZSH` 或默认的 `~/.oh-my-zsh`。
-4. 如果缺少本仓库使用的插件和主题，则克隆到 `$ZSH_CUSTOM`。
-5. 已存在的 Oh My Zsh、插件、主题目录会保留，不会被覆盖；不是本项目仓库的 Git checkout 也不会被自动更新。
-6. 在 zsh 配置末尾添加或更新以下 marker 之间的内容：
+默认情况下，安装器按下面的顺序工作：
 
-   ```text
-   # >>> zsh-dotfiles managed block >>>
-   ...
-   # <<< zsh-dotfiles managed block <<<
-   ```
+1. 检查当前平台、`bash`、`zsh`、`git` 和 `curl`。
+2. 使用当前平台可用的包管理器安装缺少的系统依赖和默认工具集。
+3. 如果缺少 Oh My Zsh，则安装到 `$ZSH`，或默认的 `~/.oh-my-zsh`。
+4. 如果缺少本项目使用的插件和 Powerlevel10k，则安装到 `$ZSH_CUSTOM`，或默认的 `~/.oh-my-zsh/custom`。
+5. 将仓库 source checkout 放在 `${XDG_DATA_HOME:-$HOME/.local/share}/canxin-zsh`，远程安装时从这里加载配置。
+6. 在 zsh 配置文件末尾维护一个可重复更新的 managed block。
 
-7. 如果修改已有配置，会在 `~/.config/zsh-dotfiles/backups/` 下创建权限较严格的本地备份。备份不在仓库内，也不会上传到 GitHub。
+远程安装默认使用：
 
-重复执行安装器是安全的：已有 managed block 会被更新，不会不断追加重复内容。
+```text
+${XDG_DATA_HOME:-$HOME/.local/share}/canxin-zsh
+```
 
-## 与已有配置的关系
+如果检测到旧版本的 `${XDG_DATA_HOME:-$HOME/.local/share}/zsh-dotfiles` checkout，安装器会继续复用它，避免重复下载。使用本地 checkout 运行 `./install.sh` 时，则直接使用当前目录作为配置源。
 
-### 空配置或没有 zsh 框架
+缺少的依赖和 checkout 才会尝试安装或 clone。已有的 Oh My Zsh、插件和主题目录不会被仓库内容直接覆盖；已有的 Git checkout 只有在远程地址匹配且显式使用 `--update` 时才会拉取更新。指向其他远程仓库的 checkout 会保留原样。
 
-安装器会初始化 Oh My Zsh、Powerlevel10k 和本仓库列出的插件。
+## 默认工具集
 
-### 已有 Oh My Zsh
+这些工具会在普通安装中自动尝试安装。它们属于安装器的默认工具集，而不是需要用户逐个选择的一长串安装选项；只有需要更轻量安装时才使用 `--minimal`。
 
-安装器不会重写用户的 `ZSH_THEME`、`plugins` 或 Oh My Zsh 配置，也不会再次加载已经加载的 Oh My Zsh。缺少的插件目录会安装，但不会擅自改动用户的插件列表。
+| 命令 | 用途 | 常见软件包名 |
+| --- | --- | --- |
+| `fzf` | 模糊搜索和交互式选择 | `fzf` |
+| `rg` | 更快的文本搜索 | `ripgrep` |
+| `fd` / `fdfind` | 更方便的文件查找 | `fd` 或 `fd-find` |
+| `eza` / `exa` | 增强版目录列表 | `eza` |
+| `bat` / `batcat` | 带高亮和分页的文件查看 | `bat` |
+| `btop` | 交互式系统监控 | `btop` |
+| `lazygit` | Git 终端界面 | `lazygit` |
+| `tldr` | 简短的命令示例 | `tealdeer` |
 
-### 已有其他 zsh 框架
+不同发行版的包名和仓库内容不完全一致。因此，某个默认工具无法找到对应包，或单个工具安装失败时，安装器只会警告并继续；zsh 配置会自动检测可用命令，并在没有 `eza`、`fd` 或 `bat` 时使用兼容命令或跳过相应增强功能。必需的 `zsh`、`git`、`curl` 如果安装后仍缺失，则安装会停止。
 
-如果检测到 zinit、zplug、zgen、antigen、zimfw、sheldon、prezto 或 zcomet 等框架，安装器不会再启动 Oh My Zsh。已有配置拥有优先权。
+## 与已有 zsh / Oh My Zsh 配置的关系
 
-### 配置冲突
+安装器不会用仓库里的文件整体替换 `~/.zshrc`、`~/.zprofile` 或 `~/.p10k.zsh`。它只在 `~/.zshrc` 和 `~/.zprofile`（或者 `$ZDOTDIR` 指定的配置目录）中维护自己的区块：
 
-- 已有同名 alias 或 function 时，本仓库不会覆盖它；
-- 已有用户配置中，默认不会强行重设快捷键和 completion style；
-- 只有选用了 Powerlevel10k 时，才会加载仓库里的 `.p10k.zsh`；
-- `~/.zshrc.local` 和 `~/.zprofile.local` 只作为本机覆盖配置使用，不应放进仓库；
-- 如果已有配置文件是普通 symlink，安装器会保留 symlink，但会更新其目标文件，并在操作前备份内容；如果 symlink 直接指向本仓库的 `home/.zshrc`/`home/.zprofile`，则会安全地脱链，避免配置递归 source；
-- 已有可读的 `~/.p10k.zsh` 或 `POWERLEVEL9K_CONFIG_FILE` 配置优先于仓库默认 p10k 配置。
+```zsh
+# >>> zsh-dotfiles managed block >>>
+...
+# <<< zsh-dotfiles managed block <<<
+```
 
-如果需要完全关闭本仓库的默认依赖安装，可以使用 `--skip-dependencies`；此时缺少必需命令会直接报错，不会修改系统或配置。
+marker 仍然使用历史名称 `zsh-dotfiles` 是有意的：这样旧版本已经安装的 managed block 可以被新版本识别和更新，不会因为仓库改名而重复加载配置。
+
+不同场景下的行为如下：
+
+| 现有状态 | 安装器行为 |
+| --- | --- |
+| 没有 zsh 配置，或配置为空 | 初始化 Oh My Zsh、Powerlevel10k、项目插件和默认 shell 设置。 |
+| 已有非空 `~/.zshrc` / `~/.zprofile` | 保留原文件内容，在末尾接入项目 managed block；不会把仓库文件整体覆盖过去。 |
+| 已经加载 Oh My Zsh | 不重复加载 Oh My Zsh，不重设已有的 `ZSH_THEME` 和 `plugins`。缺少的插件目录可以安装，但不会擅自改用户的插件列表。 |
+| 使用 zinit、zplug、zgen、antigen、zimfw、sheldon、prezto、zcomet 等框架 | 检测到其他框架且没有 Oh My Zsh source 时，不会再启动 Oh My Zsh；已有框架继续负责配置。 |
+| 已有 alias 或 function | 项目提供的 alias 只在同名项目尚不存在时定义，不主动覆盖用户定义。 |
+| 已有 Powerlevel10k 配置 | 保留可读的 `~/.p10k.zsh` 或 `POWERLEVEL9K_CONFIG_FILE`；不会覆盖用户的 p10k 文件。 |
+| `~/.zshrc` / `~/.zprofile` 是普通 symlink | 保留 symlink，并更新它指向的目标文件。 |
+| symlink 直接指向仓库的 `home/.zshrc` 或 `home/.zprofile` | 安全地解除这个自引用 symlink，改为独立的 managed 配置文件，避免递归 source。 |
+
+修改已有配置前，安装器会在下面的位置创建权限较严格的备份：
+
+```text
+~/.config/zsh-dotfiles/backups/
+```
+
+空配置时，`~/.zshrc.local` 和 `~/.zprofile.local` 会作为本机覆盖文件自动加载。对于已有非空配置，安装器默认不额外插入 local 文件的加载语句，以免改变用户原本的加载顺序；需要时可以在自己的配置中显式 source 它们。`*.local` 不应提交到仓库。
 
 ## 常用选项
 
+大多数用户只需要直接运行无参数安装。需要改变行为时，常用选项如下：
+
 ```bash
-./install.sh --update             # 更新已存在的 Oh My Zsh/插件/主题 checkout
-./install.sh --update-source      # 更新 curl|bash 模式管理的仓库副本
-./install.sh --skip-dependencies  # 不安装系统包、Oh My Zsh/插件/主题
-./install.sh --no-system-dependencies # 不调用系统包管理器
-./install.sh --minimal            # 不安装默认 CLI 工具集
-./install.sh --dry-run            # 只显示配置修改计划；远程脚本模式需改在本地 checkout 中运行
+./install.sh --minimal                 # 安装基础依赖，但跳过默认工具集
+./install.sh --update                  # 更新匹配的 Oh My Zsh、插件和主题 checkout
+./install.sh --update-source           # 更新远程安装管理的 canxin-zsh source checkout
+./install.sh --skip-dependencies       # 不安装系统依赖、Oh My Zsh、插件和主题
+./install.sh --no-system-dependencies  # 不调用系统包管理器，但仍可安装 Oh My Zsh/插件
+./install.sh --dry-run                 # 只显示计划，不写配置；需在本地 checkout 中运行
 ```
 
-也可以使用环境变量：
+注意：`--skip-dependencies`、`--no-system-dependencies` 和 `--minimal` 都不会卸载已有软件。跳过基础依赖安装时，`zsh`、`git` 和 `curl` 必须已经存在，否则安装器会直接报错。
+
+远程安装需要自定义位置或分支时，可以把参数传给管道中的安装器：
 
 ```bash
-ZSH_DOTFILES_INSTALL_DIR="$HOME/.local/share/canxin-zsh" ./install.sh
+curl -fsSL https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.sh |
+  bash -s -- --install-dir "$HOME/.local/share/canxin-zsh" --ref main
+```
+
+在本地 checkout 中运行时，控制依赖和工具集的环境变量包括：
+
+```bash
 ZSH_DOTFILES_SKIP_DEPENDENCIES=1 ./install.sh
 ZSH_DOTFILES_AUTO_INSTALL=0 ./install.sh
 ZSH_DOTFILES_INSTALL_TOOLSET=0 ./install.sh
 ```
 
-`ZSH_DOTFILES_INSTALL_OPTIONAL_TOOLS=0` 和 `--no-optional-tools` 仍作为旧版本兼容别名保留，但新配置建议使用 `--minimal` 或 `ZSH_DOTFILES_INSTALL_TOOLSET=0`。
+旧版本的 `--no-optional-tools` 和 `ZSH_DOTFILES_INSTALL_OPTIONAL_TOOLS=0` 仍作为兼容别名保留；新配置建议使用 `--minimal` 或 `ZSH_DOTFILES_INSTALL_TOOLSET=0`。
 
-## 本机覆盖配置
+## 安装后检查与更新
 
-以下文件应该留在每台机器本地：
-
-- `~/.zprofile.local`
-- `~/.zshrc.local`
-
-适合放在这些文件中的内容包括：
-
-- 机器特定的 `PATH`；
-- 公司代理设置；
-- `JAVA_HOME`、`ANDROID_HOME` 等 SDK 变量；
-- `brew shellenv` 或 Linuxbrew 初始化；
-- SSH、云平台环境变量；
-- 主机特定 alias。
-
-仓库的 `.gitignore` 也会忽略 `*.local`、`.env*`、SSH/AWS 配置和常见私钥文件，降低误提交风险。
-
-## 目录结构
-
-```text
-home/
-  .p10k.zsh
-  .zprofile
-  .zshrc
-zsh/
-  rc/
-    common.zsh
-bin/
-  zsh-doctor
-tests/
-  test-install.sh
-install.sh
-install.ps1
-```
-
-## 默认工具集
-
-安装器会默认尝试安装这些工具，配置会自动启用其中一部分。个别发行版如果没有对应软件包，shell 仍可工作，并会在安装日志和 `bin/zsh-doctor` 中显示缺失项：
-
-- `fzf`
-- `ripgrep`
-- `fd` 或 `fdfind`
-- `eza` 或 `exa`
-- `bat` 或 `batcat`
-- `btop`
-- `lazygit`
-- `tldr`
-
-安装完成后可以运行：
+在本地 checkout 中运行诊断工具：
 
 ```bash
 bin/zsh-doctor
 ```
 
-## 第三方依赖与更新
+远程安装则运行：
 
-安装器从上游 GitHub 仓库获取 Oh My Zsh、插件和 Powerlevel10k。当前默认使用这些仓库的默认分支；`--update` 或 `zupdate-all` 会主动拉取更新。如果要在更严格的生产环境使用，建议把这些依赖固定到审查过的 commit 或 tag。
+```bash
+"${XDG_DATA_HOME:-$HOME/.local/share}/canxin-zsh/bin/zsh-doctor"
+```
 
-## 开源许可
+它会检查 zsh、Git、默认工具集以及可选的 `code` 命令是否可用。缺少某个增强工具不会让 shell 失效。如果安装器复用了历史的 `~/.local/share/zsh-dotfiles` 目录，请把上面命令中的 `canxin-zsh` 换成 `zsh-dotfiles`。
 
-本仓库目前没有附带许可证文件。公开可见不等于自动授予他人复制、修改或再发布的权利；如果希望别人明确复用，请根据你的意图添加合适的 `LICENSE`。
+zsh 配置加载后可以使用：
+
+```zsh
+zupdate-all
+```
+
+它会尝试更新 Oh My Zsh 和 `$ZSH_CUSTOM` 下的 Git 插件/主题 checkout；这也可能包含用户自己放进去的 checkout。如果系统有 Homebrew，还会执行 `brew update` 和 `brew upgrade`，并在可用时更新 `tldr`。只想在安装阶段更新与本项目远程地址匹配的依赖时，使用 `./install.sh --update`；只想更新远程管理的本仓库 source checkout 时，使用 `./install.sh --update-source`。
+
+## 本机配置与目录结构
+
+机器特定的设置建议放在以下文件，而不是提交到仓库：
+
+```text
+~/.zprofile.local   # PATH、SDK、brew shellenv、代理等登录 shell 设置
+~/.zshrc.local      # 本机 alias、函数和交互式 shell 设置
+```
+
+仓库的 `.gitignore` 已忽略 `*.local`、`.env*`、`.netrc`、`.aws/`、`.ssh/` 以及常见私钥扩展名，但 `.gitignore` 只是防误提交措施，不是秘密管理工具。
+
+主要目录：
+
+```text
+home/
+  .zprofile          # 登录 shell 使用的仓库配置
+  .zshrc             # 交互式 shell 入口
+  .p10k.zsh          # Powerlevel10k 默认配置
+zsh/rc/common.zsh    # alias、工具检测、Oh My Zsh 接入和更新函数
+bin/zsh-doctor       # 安装后环境检查
+tests/test-install.sh
+install.sh           # POSIX 环境安装器
+install.ps1          # Windows PowerShell 转发器
+```
+
+## 第三方依赖
+
+安装器会从上游 GitHub 获取以下项目：
+
+- [Oh My Zsh](https://github.com/ohmyzsh/ohmyzsh)
+- [Powerlevel10k](https://github.com/romkatv/powerlevel10k)
+- [fzf-tab](https://github.com/Aloxaf/fzf-tab)
+- [zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions)
+- [zsh-completions](https://github.com/zsh-users/zsh-completions)
+- [zsh-history-substring-search](https://github.com/zsh-users/zsh-history-substring-search)
+- [zsh-syntax-highlighting](https://github.com/zsh-users/zsh-syntax-highlighting)
+
+默认会从这些仓库的默认分支获取内容。对生产环境或需要可复现结果的场景，建议先审查仓库和依赖，再固定到经过确认的 commit 或 tag，而不是直接执行随时变化的 `main` 分支远程脚本。
+
+## 开发与 CI
+
+本地可以运行与 GitHub Actions 相同的核心检查：
+
+```bash
+bash -n install.sh bin/zsh-doctor tests/test-install.sh
+zsh -n home/.zprofile home/.zshrc home/.p10k.zsh zsh/rc/common.zsh
+shellcheck install.sh bin/zsh-doctor tests/test-install.sh
+git diff --check
+bash tests/test-install.sh
+```
+
+GitHub Actions 会在 Ubuntu、macOS 和 Windows/MSYS2 上执行语法检查、ShellCheck（Ubuntu/macOS）、隔离安装测试和真实依赖安装 smoke test，并在非 Pull Request 事件中测试已发布的一键安装脚本。
+
+## 安全与许可证
+
+远程一键安装本质上会下载并执行仓库中的 shell 脚本；在敏感环境中使用前，请先阅读或 clone 后审查 `install.sh`。安装器在需要系统权限时只调用已有的 `sudo` 或 `doas`，不会把密码写入文件；默认工具集中的单个包安装失败也不会绕过权限检查或强行覆盖用户目录。
+
+不要把 API token、密码、私钥、公司内部路径或代理凭据放进仓库配置。公开仓库中的脚本、配置和提交历史都应按“任何人都能读取”来处理。
+
+当前仓库没有附带 `LICENSE` 文件。仓库设为 public 不等于自动授予他人复制、修改或再发布的权利；如果希望明确允许复用，请根据你的意图补充合适的许可证。
