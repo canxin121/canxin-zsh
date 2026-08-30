@@ -272,6 +272,16 @@ test_dry_run_does_not_write() {
     ZSH_DOTFILES_SKIP_DEPENDENCIES=0 \
     "$INSTALLER" --dry-run
 
+  env \
+    -u ZSH \
+    -u ZSH_CUSTOM \
+    -u ZSH_THEME \
+    -u FPATH \
+    HOME="$home_dir" \
+    ZDOTDIR="$home_dir" \
+    ZSH_DOTFILES_SKIP_DEPENDENCIES=0 \
+    "$INSTALLER" --minimal --dry-run
+
   [[ ! -e "$home_dir/.zshrc" ]] || fail "dry-run created .zshrc"
   [[ ! -e "$home_dir/.zprofile" ]] || fail "dry-run created .zprofile"
   [[ ! -e "$home_dir/.oh-my-zsh" ]] || fail "dry-run created an Oh My Zsh directory"

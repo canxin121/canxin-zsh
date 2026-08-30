@@ -61,34 +61,34 @@ irm https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.ps1 | ie
 
 ## 系统依赖自动安装
 
-默认情况下，安装器会先检测并尝试自动安装：
+默认情况下，安装器会先检测并尝试自动安装下面这套基础工具；它们不再作为安装界面里的“一堆可选项”：
 
 - 必需依赖：`zsh`、`git`、`curl` 和 CA 证书；
-- 可选工具：`fzf`、`ripgrep`、`fd`、`eza`、`bat`、`btop`、`lazygit`、`tldr`（可用包名 `tealdeer` 安装）。
+- 默认工具集：`fzf`、`ripgrep`、`fd`、`eza`、`bat`、`btop`、`lazygit`、`tldr`（可用包名 `tealdeer` 安装）。
 
 支持的系统包管理器包括：
 
-- macOS：已安装 Homebrew 时使用 `brew`；macOS 自带的 `zsh`、`git`、`curl` 可直接使用。没有 Homebrew 时不会静默安装整套 Homebrew，只会保留可用的可选工具并给出提示；
+- macOS：已安装 Homebrew 时使用 `brew`；macOS 自带的 `zsh`、`git`、`curl` 可直接使用。没有 Homebrew 时不会静默安装整套 Homebrew，而是保留系统自带能力并明确提示默认工具集无法全部补齐；
 - Debian/Ubuntu/WSL：`apt-get`；
 - Fedora/RHEL 系：`dnf` 或 `yum`；
 - Arch/MSYS2：`pacman`；
 - Alpine：`apk`；
 - openSUSE：`zypper`。
 
-安装必需系统包时失败会停止，某个可选工具在当前发行版没有对应包时只会警告并继续。需要权限时使用现有的 `sudo` 或 `doas`，不会把密码写入文件。系统包安装和 Oh My Zsh/plugin checkout 都只在缺少时执行；已有 checkout 不会被另一个远程仓库覆盖。
+安装必需系统包时失败会停止；默认工具集会逐个平台尝试安装，某个工具在当前发行版没有对应包时只会警告并继续，不会让整个 zsh 配置失败。需要权限时使用现有的 `sudo` 或 `doas`，不会把密码写入文件。系统包安装和 Oh My Zsh/plugin checkout 都只在缺少时执行；已有 checkout 不会被另一个远程仓库覆盖。
 
 如果希望完全手动管理依赖，可以使用：
 
 ```bash
 ./install.sh --skip-dependencies       # 跳过系统包、Oh My Zsh 和插件/主题
 ./install.sh --no-system-dependencies  # 只跳过系统包管理器，仍可安装 Oh My Zsh/plugin
-./install.sh --no-optional-tools       # 只安装必需系统包，不安装可选 CLI 工具
+./install.sh --minimal                 # 只安装 zsh/git/curl 等必需依赖，不安装默认工具集
 ```
 
 ## 安装器会做什么
 
 1. 检查 `bash`、`zsh`，并识别 macOS、Linux、WSL 和 Windows POSIX shell 环境。
-2. 在支持的包管理器中补齐缺少的必需依赖和可选命令行工具。
+2. 在支持的包管理器中补齐缺少的必需依赖和默认工具集。
 3. 如果缺少 Oh My Zsh，则克隆到 `$ZSH` 或默认的 `~/.oh-my-zsh`。
 4. 如果缺少本仓库使用的插件和主题，则克隆到 `$ZSH_CUSTOM`。
 5. 已存在的 Oh My Zsh、插件、主题目录会保留，不会被覆盖；不是本项目仓库的 Git checkout 也不会被自动更新。
@@ -136,7 +136,7 @@ irm https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.ps1 | ie
 ./install.sh --update-source      # 更新 curl|bash 模式管理的仓库副本
 ./install.sh --skip-dependencies  # 不安装系统包、Oh My Zsh/插件/主题
 ./install.sh --no-system-dependencies # 不调用系统包管理器
-./install.sh --no-optional-tools  # 不安装可选 CLI 工具
+./install.sh --minimal            # 不安装默认 CLI 工具集
 ./install.sh --dry-run            # 只显示配置修改计划；远程脚本模式需改在本地 checkout 中运行
 ```
 
@@ -146,8 +146,10 @@ irm https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.ps1 | ie
 ZSH_DOTFILES_INSTALL_DIR="$HOME/.local/share/canxin-zsh" ./install.sh
 ZSH_DOTFILES_SKIP_DEPENDENCIES=1 ./install.sh
 ZSH_DOTFILES_AUTO_INSTALL=0 ./install.sh
-ZSH_DOTFILES_INSTALL_OPTIONAL_TOOLS=0 ./install.sh
+ZSH_DOTFILES_INSTALL_TOOLSET=0 ./install.sh
 ```
+
+`ZSH_DOTFILES_INSTALL_OPTIONAL_TOOLS=0` 和 `--no-optional-tools` 仍作为旧版本兼容别名保留，但新配置建议使用 `--minimal` 或 `ZSH_DOTFILES_INSTALL_TOOLSET=0`。
 
 ## 本机覆盖配置
 
@@ -185,9 +187,9 @@ install.sh
 install.ps1
 ```
 
-## 可选工具
+## 默认工具集
 
-没有这些工具时 shell 仍然可以工作；如果已安装，配置会自动启用其中一部分：
+安装器会默认尝试安装这些工具，配置会自动启用其中一部分。个别发行版如果没有对应软件包，shell 仍可工作，并会在安装日志和 `bin/zsh-doctor` 中显示缺失项：
 
 - `fzf`
 - `ripgrep`

@@ -49,7 +49,10 @@ UPDATE_SOURCE=0
 SKIP_DEPENDENCIES="${ZSH_DOTFILES_SKIP_DEPENDENCIES:-0}"
 SKIP_SYSTEM_DEPENDENCIES="${ZSH_DOTFILES_SKIP_SYSTEM_DEPENDENCIES:-0}"
 AUTO_INSTALL_SYSTEM="${ZSH_DOTFILES_AUTO_INSTALL:-1}"
-INSTALL_OPTIONAL_TOOLS="${ZSH_DOTFILES_INSTALL_OPTIONAL_TOOLS:-1}"
+INSTALL_TOOLSET="${ZSH_DOTFILES_INSTALL_TOOLSET:-1}"
+if [[ "${ZSH_DOTFILES_INSTALL_OPTIONAL_TOOLS:-1}" == "0" ]]; then
+  INSTALL_TOOLSET=0
+fi
 DRY_RUN="${ZSH_DOTFILES_DRY_RUN:-0}"
 ZDOTDIR_ROOT="${ZDOTDIR:-$HOME}"
 BACKUP_DIR=""
@@ -69,7 +72,7 @@ Options:
   --update-source           Update a bootstrapped canxin-zsh checkout.
   --skip-dependencies       Do not install system, Oh My Zsh, or custom dependencies.
   --no-system-dependencies  Do not use a system package manager.
-  --no-optional-tools       Do not install optional CLI tools.
+  --minimal                 Do not install the default CLI toolset.
   --install-dir DIR         Checkout location for curl|bash installation.
   --repo-url URL            Repository URL used by curl|bash installation.
   --ref REF                 Branch or tag used by curl|bash installation.
@@ -83,7 +86,7 @@ Environment:
   ZSH_DOTFILES_SKIP_DEPENDENCIES=1
   ZSH_DOTFILES_SKIP_SYSTEM_DEPENDENCIES=1
   ZSH_DOTFILES_AUTO_INSTALL=0
-  ZSH_DOTFILES_INSTALL_OPTIONAL_TOOLS=0
+  ZSH_DOTFILES_INSTALL_TOOLSET=0
   ZSH_DOTFILES_DRY_RUN=1
 
 Examples:
@@ -233,7 +236,7 @@ detect_package_manager() {
 
 MISSING_REQUIRED_COMMANDS=()
 SYSTEM_REQUIRED_PACKAGES=()
-SYSTEM_OPTIONAL_PACKAGES=()
+SYSTEM_TOOLSET_PACKAGES=()
 APT_UPDATE_DONE=0
 
 collect_missing_required_commands() {
@@ -252,7 +255,7 @@ build_package_lists() {
   local manager="$1"
 
   SYSTEM_REQUIRED_PACKAGES=()
-  SYSTEM_OPTIONAL_PACKAGES=()
+  SYSTEM_TOOLSET_PACKAGES=()
 
   case "$manager" in
     brew)
@@ -267,28 +270,28 @@ build_package_lists() {
       fi
 
       if ! command -v fzf >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+        SYSTEM_TOOLSET_PACKAGES+=(fzf)
       fi
       if ! command -v rg >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+        SYSTEM_TOOLSET_PACKAGES+=(ripgrep)
       fi
       if ! has_any_command fd fdfind; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fd)
+        SYSTEM_TOOLSET_PACKAGES+=(fd)
       fi
       if ! has_any_command eza exa; then
-        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+        SYSTEM_TOOLSET_PACKAGES+=(eza)
       fi
       if ! has_any_command bat batcat; then
-        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+        SYSTEM_TOOLSET_PACKAGES+=(bat)
       fi
       if ! command -v btop >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+        SYSTEM_TOOLSET_PACKAGES+=(btop)
       fi
       if ! command -v lazygit >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+        SYSTEM_TOOLSET_PACKAGES+=(lazygit)
       fi
       if ! command -v tldr >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+        SYSTEM_TOOLSET_PACKAGES+=(tealdeer)
       fi
       ;;
     apt-get)
@@ -304,28 +307,28 @@ build_package_lists() {
       fi
 
       if ! command -v fzf >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+        SYSTEM_TOOLSET_PACKAGES+=(fzf)
       fi
       if ! command -v rg >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+        SYSTEM_TOOLSET_PACKAGES+=(ripgrep)
       fi
       if ! has_any_command fd fdfind; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fd-find)
+        SYSTEM_TOOLSET_PACKAGES+=(fd-find)
       fi
       if ! has_any_command eza exa; then
-        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+        SYSTEM_TOOLSET_PACKAGES+=(eza)
       fi
       if ! has_any_command bat batcat; then
-        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+        SYSTEM_TOOLSET_PACKAGES+=(bat)
       fi
       if ! command -v btop >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+        SYSTEM_TOOLSET_PACKAGES+=(btop)
       fi
       if ! command -v lazygit >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+        SYSTEM_TOOLSET_PACKAGES+=(lazygit)
       fi
       if ! command -v tldr >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+        SYSTEM_TOOLSET_PACKAGES+=(tealdeer)
       fi
       ;;
     dnf|yum)
@@ -341,28 +344,28 @@ build_package_lists() {
       fi
 
       if ! command -v fzf >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+        SYSTEM_TOOLSET_PACKAGES+=(fzf)
       fi
       if ! command -v rg >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+        SYSTEM_TOOLSET_PACKAGES+=(ripgrep)
       fi
       if ! has_any_command fd fdfind; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fd-find)
+        SYSTEM_TOOLSET_PACKAGES+=(fd-find)
       fi
       if ! has_any_command eza exa; then
-        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+        SYSTEM_TOOLSET_PACKAGES+=(eza)
       fi
       if ! has_any_command bat batcat; then
-        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+        SYSTEM_TOOLSET_PACKAGES+=(bat)
       fi
       if ! command -v btop >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+        SYSTEM_TOOLSET_PACKAGES+=(btop)
       fi
       if ! command -v lazygit >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+        SYSTEM_TOOLSET_PACKAGES+=(lazygit)
       fi
       if ! command -v tldr >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+        SYSTEM_TOOLSET_PACKAGES+=(tealdeer)
       fi
       ;;
     pacman)
@@ -378,28 +381,28 @@ build_package_lists() {
       fi
 
       if ! command -v fzf >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+        SYSTEM_TOOLSET_PACKAGES+=(fzf)
       fi
       if ! command -v rg >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+        SYSTEM_TOOLSET_PACKAGES+=(ripgrep)
       fi
       if ! has_any_command fd fdfind; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fd)
+        SYSTEM_TOOLSET_PACKAGES+=(fd)
       fi
       if ! has_any_command eza exa; then
-        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+        SYSTEM_TOOLSET_PACKAGES+=(eza)
       fi
       if ! has_any_command bat batcat; then
-        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+        SYSTEM_TOOLSET_PACKAGES+=(bat)
       fi
       if ! command -v btop >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+        SYSTEM_TOOLSET_PACKAGES+=(btop)
       fi
       if ! command -v lazygit >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+        SYSTEM_TOOLSET_PACKAGES+=(lazygit)
       fi
       if ! command -v tldr >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+        SYSTEM_TOOLSET_PACKAGES+=(tealdeer)
       fi
       ;;
     apk)
@@ -415,28 +418,28 @@ build_package_lists() {
       fi
 
       if ! command -v fzf >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+        SYSTEM_TOOLSET_PACKAGES+=(fzf)
       fi
       if ! command -v rg >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+        SYSTEM_TOOLSET_PACKAGES+=(ripgrep)
       fi
       if ! has_any_command fd fdfind; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fd)
+        SYSTEM_TOOLSET_PACKAGES+=(fd)
       fi
       if ! has_any_command eza exa; then
-        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+        SYSTEM_TOOLSET_PACKAGES+=(eza)
       fi
       if ! has_any_command bat batcat; then
-        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+        SYSTEM_TOOLSET_PACKAGES+=(bat)
       fi
       if ! command -v btop >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+        SYSTEM_TOOLSET_PACKAGES+=(btop)
       fi
       if ! command -v lazygit >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+        SYSTEM_TOOLSET_PACKAGES+=(lazygit)
       fi
       if ! command -v tldr >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+        SYSTEM_TOOLSET_PACKAGES+=(tealdeer)
       fi
       ;;
     zypper)
@@ -452,28 +455,28 @@ build_package_lists() {
       fi
 
       if ! command -v fzf >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+        SYSTEM_TOOLSET_PACKAGES+=(fzf)
       fi
       if ! command -v rg >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+        SYSTEM_TOOLSET_PACKAGES+=(ripgrep)
       fi
       if ! has_any_command fd fdfind; then
-        SYSTEM_OPTIONAL_PACKAGES+=(fd)
+        SYSTEM_TOOLSET_PACKAGES+=(fd)
       fi
       if ! has_any_command eza exa; then
-        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+        SYSTEM_TOOLSET_PACKAGES+=(eza)
       fi
       if ! has_any_command bat batcat; then
-        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+        SYSTEM_TOOLSET_PACKAGES+=(bat)
       fi
       if ! command -v btop >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+        SYSTEM_TOOLSET_PACKAGES+=(btop)
       fi
       if ! command -v lazygit >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+        SYSTEM_TOOLSET_PACKAGES+=(lazygit)
       fi
       if ! command -v tldr >/dev/null 2>&1; then
-        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+        SYSTEM_TOOLSET_PACKAGES+=(tealdeer)
       fi
       ;;
     *)
@@ -481,8 +484,8 @@ build_package_lists() {
       ;;
   esac
 
-  if ! is_true "$INSTALL_OPTIONAL_TOOLS"; then
-    SYSTEM_OPTIONAL_PACKAGES=()
+  if ! is_true "$INSTALL_TOOLSET"; then
+    SYSTEM_TOOLSET_PACKAGES=()
   fi
 }
 
@@ -522,7 +525,7 @@ install_apt_packages() {
     run_privileged apt-get install -y "${available_packages[@]}" ||
       die "Unable to install required packages: ${available_packages[*]}"
   elif ! run_privileged apt-get install -y "${available_packages[@]}"; then
-    warn "Some optional apt packages could not be installed; continuing"
+    warn "Some default CLI toolset packages could not be installed; continuing"
   fi
 }
 
@@ -557,7 +560,7 @@ install_rpm_packages() {
     run_privileged "$manager" install -y "${available_packages[@]}" ||
       die "Unable to install required packages: ${available_packages[*]}"
   elif ! run_privileged "$manager" install -y "${available_packages[@]}"; then
-    warn "Some optional $manager packages could not be installed; continuing"
+    warn "Some default CLI toolset packages could not be installed; continuing"
   fi
 }
 
@@ -596,7 +599,7 @@ install_pacman_packages() {
     run_pacman -S --needed --noconfirm "${available_packages[@]}" ||
       die "Unable to install required packages: ${available_packages[*]}"
   elif ! run_pacman -S --needed --noconfirm "${available_packages[@]}"; then
-    warn "Some optional pacman packages could not be installed; continuing"
+    warn "Some default CLI toolset packages could not be installed; continuing"
   fi
 }
 
@@ -627,7 +630,7 @@ install_apk_packages() {
     run_privileged apk add --no-cache "${available_packages[@]}" ||
       die "Unable to install required packages: ${available_packages[*]}"
   elif ! run_privileged apk add --no-cache "${available_packages[@]}"; then
-    warn "Some optional apk packages could not be installed; continuing"
+    warn "Some default CLI toolset packages could not be installed; continuing"
   fi
 }
 
@@ -658,7 +661,7 @@ install_zypper_packages() {
     run_privileged zypper --non-interactive install --no-recommends "${available_packages[@]}" ||
       die "Unable to install required packages: ${available_packages[*]}"
   elif ! run_privileged zypper --non-interactive install --no-recommends "${available_packages[@]}"; then
-    warn "Some optional zypper packages could not be installed; continuing"
+    warn "Some default CLI toolset packages could not be installed; continuing"
   fi
 }
 
@@ -670,7 +673,7 @@ install_brew_packages() {
   if is_true "$required"; then
     brew install "$@" || die "Unable to install required Homebrew packages: $*"
   elif ! brew install "$@"; then
-    warn "Some optional Homebrew packages could not be installed; continuing"
+    warn "Some default CLI toolset packages could not be installed; continuing"
   fi
 }
 
@@ -682,8 +685,8 @@ install_system_packages() {
     if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
       log "Would install required system packages with $manager: ${SYSTEM_REQUIRED_PACKAGES[*]}"
     fi
-    if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
-      log "Would install optional CLI tools with $manager: ${SYSTEM_OPTIONAL_PACKAGES[*]}"
+    if ((${#SYSTEM_TOOLSET_PACKAGES[@]})); then
+      log "Would install default CLI toolset with $manager: ${SYSTEM_TOOLSET_PACKAGES[*]}"
     fi
     return
   fi
@@ -693,48 +696,48 @@ install_system_packages() {
       if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
         install_brew_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
       fi
-      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
-        install_brew_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_TOOLSET_PACKAGES[@]})); then
+        install_brew_packages false "${SYSTEM_TOOLSET_PACKAGES[@]}"
       fi
       ;;
     apt-get)
       if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
         install_apt_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
       fi
-      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
-        install_apt_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_TOOLSET_PACKAGES[@]})); then
+        install_apt_packages false "${SYSTEM_TOOLSET_PACKAGES[@]}"
       fi
       ;;
     dnf|yum)
       if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
         install_rpm_packages "$manager" true "${SYSTEM_REQUIRED_PACKAGES[@]}"
       fi
-      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
-        install_rpm_packages "$manager" false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_TOOLSET_PACKAGES[@]})); then
+        install_rpm_packages "$manager" false "${SYSTEM_TOOLSET_PACKAGES[@]}"
       fi
       ;;
     pacman)
       if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
         install_pacman_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
       fi
-      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
-        install_pacman_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_TOOLSET_PACKAGES[@]})); then
+        install_pacman_packages false "${SYSTEM_TOOLSET_PACKAGES[@]}"
       fi
       ;;
     apk)
       if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
         install_apk_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
       fi
-      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
-        install_apk_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_TOOLSET_PACKAGES[@]})); then
+        install_apk_packages false "${SYSTEM_TOOLSET_PACKAGES[@]}"
       fi
       ;;
     zypper)
       if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
         install_zypper_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
       fi
-      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
-        install_zypper_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_TOOLSET_PACKAGES[@]})); then
+        install_zypper_packages false "${SYSTEM_TOOLSET_PACKAGES[@]}"
       fi
       ;;
     *)
@@ -763,7 +766,7 @@ ensure_system_dependencies() {
     if ((${#MISSING_REQUIRED_COMMANDS[@]})); then
       die "Missing required commands (${MISSING_REQUIRED_COMMANDS[*]}) and no supported package manager was found"
     fi
-    warn "No supported package manager found; optional CLI tools will not be installed"
+    warn "No supported package manager found; the default CLI toolset will not be installed"
     return
   fi
 
@@ -1229,8 +1232,10 @@ parse_args() {
       --no-system-dependencies)
         SKIP_SYSTEM_DEPENDENCIES=1
         ;;
-      --no-optional-tools)
-        INSTALL_OPTIONAL_TOOLS=0
+      --minimal|--no-optional-tools)
+        # --no-optional-tools remains as a compatibility alias from the
+        # previous release; the user-facing name is now --minimal.
+        INSTALL_TOOLSET=0
         ;;
       --install-dir)
         shift
