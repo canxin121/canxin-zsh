@@ -231,7 +231,7 @@ test_symlink_to_tracked_source_is_detached() {
 
   run_test_zsh "$home_dir" -d -c '
     source "$ZDOTDIR/.zshrc"
-    [[ "$ZSH_DOTFILES_ROOT" == */zsh-dotfiles ]]
+    [[ "$ZSH_DOTFILES_ROOT" == */zsh-dotfiles || "$ZSH_DOTFILES_ROOT" == */canxin-zsh ]]
   '
 }
 
