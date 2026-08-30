@@ -49,6 +49,42 @@ irm https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.ps1 | ie
 exec zsh
 ```
 
+## 安装后有什么
+
+安装完成后，得到的不只是几个配置文件，而是一套可以直接使用的交互式 zsh 环境。普通的全量安装、且原来的 zsh 配置为空时，主要功能包括：
+
+| 功能 | 安装后可以做什么 |
+| --- | --- |
+| Prompt 与主题 | 默认使用 Powerlevel10k，提示符会显示当前目录、Git 分支和工作区状态等信息。 |
+| Oh My Zsh | 启用 `git`、`colored-man-pages`、`dirhistory`、`extract`、`sudo` 等常用插件。 |
+| 补全与交互 | 使用 `zsh-completions`、`fzf-tab`，让 Tab 补全更丰富，并可在候选项之间交互选择。 |
+| 历史记录 | 默认保留最多 50,000 条历史，支持增量写入、跨 shell 共享和去重。 |
+| 历史搜索 | `zsh-history-substring-search` 可用时，按上下方向键搜索包含当前输入内容的历史命令。 |
+| 命令建议与高亮 | `zsh-autosuggestions` 提供历史命令建议，`zsh-syntax-highlighting` 对输入命令进行语法高亮。 |
+| fzf 工作流 | 安装 `fzf` 后，文件搜索、目录切换、补全预览和常用快捷键会自动接入；没有 `fd` 时会退回系统 `find`。 |
+| 目录导航 | 支持直接输入目录名进入目录、目录栈和重复目录不入栈等常用行为。 |
+
+此外，安装器会准备 `fzf-tab`、`zsh-autosuggestions`、`zsh-completions`、`zsh-history-substring-search` 和 `zsh-syntax-highlighting`。如果你使用的是全新配置，`Ctrl-E` 可以用编辑器打开当前命令；上下方向键会优先进行历史子串搜索。已有非空配置不会被强行改写这些快捷键。
+
+默认会提供下面这些不容易记错的快捷命令。它们只会在同名 alias 或 function 尚未存在时定义，因此不会主动覆盖用户自己的命令：
+
+```zsh
+l / ls       # 使用 eza/exa 列目录；没有时保留系统 ls
+ll           # 详细列出文件、隐藏文件和 Git 状态
+la           # 列出隐藏文件
+lt           # 树状列出目录
+catp FILE    # 使用 bat/batcat 分页并高亮查看文件
+grep TEXT    # 如果安装了 ripgrep，则使用 rg
+top          # 如果安装了 btop，则使用 btop
+lg            # 如果安装了 lazygit，则启动 lazygit
+zreload      # 重新加载 ~/.zshrc
+zupdate-all  # 更新 Oh My Zsh、插件/主题 checkout 和可用的工具
+```
+
+`eza`、`fd`、`bat` 等工具在不同系统上可能使用不同命令名，配置会自动识别 `eza/exa`、`fd/fdfind` 和 `bat/batcat`。某个增强工具不可用时，基础 shell、普通 `ls`、系统 `find` 等仍然可以工作。
+
+如果已有非空的 `.zshrc` 或其他 zsh 框架，安装器会进入兼容集成模式：保留已有主题、插件、历史选项、补全样式和快捷键，不强行启动 Oh My Zsh；项目仍会接入能安全提供的工具检测、alias 和更新函数。具体保护规则见下方的[与已有 zsh / Oh My Zsh 配置的关系](#与已有-zsh--oh-my-zsh-配置的关系)。
+
 ## 支持的平台与边界
 
 | 环境 | 状态 | 说明 |
