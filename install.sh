@@ -5,7 +5,9 @@
 
 set -euo pipefail
 
-PROJECT_URL_DEFAULT="https://github.com/canxin121/zsh-dotfiles.git"
+PROJECT_NAME="canxin-zsh"
+PROJECT_URL_DEFAULT="https://github.com/canxin121/canxin-zsh.git"
+LEGACY_PROJECT_URL_DEFAULT="https://github.com/canxin121/zsh-dotfiles.git"
 PROJECT_REF_DEFAULT="main"
 
 OH_MY_ZSH_REPO="https://github.com/ohmyzsh/ohmyzsh.git"
@@ -30,13 +32,24 @@ PLUGIN_URLS=(
 
 REPO_URL="${ZSH_DOTFILES_REPO_URL:-$PROJECT_URL_DEFAULT}"
 PROJECT_REF="${ZSH_DOTFILES_REF:-$PROJECT_REF_DEFAULT}"
-SOURCE_INSTALL_DIR="${ZSH_DOTFILES_INSTALL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/zsh-dotfiles}"
+SOURCE_INSTALL_DIR_DEFAULT="${XDG_DATA_HOME:-$HOME/.local/share}/$PROJECT_NAME"
+LEGACY_SOURCE_INSTALL_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/zsh-dotfiles"
+if [[ -n "${ZSH_DOTFILES_INSTALL_DIR:-}" ]]; then
+  SOURCE_INSTALL_DIR="$ZSH_DOTFILES_INSTALL_DIR"
+  SOURCE_INSTALL_DIR_EXPLICIT=1
+else
+  SOURCE_INSTALL_DIR="$SOURCE_INSTALL_DIR_DEFAULT"
+  SOURCE_INSTALL_DIR_EXPLICIT=0
+fi
 
 REPO_ROOT=""
 SOURCE_BOOTSTRAPPED=0
 UPDATE_EXISTING=0
 UPDATE_SOURCE=0
 SKIP_DEPENDENCIES="${ZSH_DOTFILES_SKIP_DEPENDENCIES:-0}"
+SKIP_SYSTEM_DEPENDENCIES="${ZSH_DOTFILES_SKIP_SYSTEM_DEPENDENCIES:-0}"
+AUTO_INSTALL_SYSTEM="${ZSH_DOTFILES_AUTO_INSTALL:-1}"
+INSTALL_OPTIONAL_TOOLS="${ZSH_DOTFILES_INSTALL_OPTIONAL_TOOLS:-1}"
 DRY_RUN="${ZSH_DOTFILES_DRY_RUN:-0}"
 ZDOTDIR_ROOT="${ZDOTDIR:-$HOME}"
 BACKUP_DIR=""
@@ -48,13 +61,15 @@ usage() {
   cat <<'EOF'
 Usage: ./install.sh [options]
 
-Install or integrate the zsh-dotfiles configuration without replacing an
+Install or integrate the canxin-zsh configuration without replacing an
 existing ~/.zshrc or ~/.zprofile.
 
 Options:
   --update                  Update existing Oh My Zsh/plugin/theme checkouts.
-  --update-source           Update a bootstrapped zsh-dotfiles checkout.
-  --skip-dependencies       Do not install Oh My Zsh or custom plugins.
+  --update-source           Update a bootstrapped canxin-zsh checkout.
+  --skip-dependencies       Do not install system, Oh My Zsh, or custom dependencies.
+  --no-system-dependencies  Do not use a system package manager.
+  --no-optional-tools       Do not install optional CLI tools.
   --install-dir DIR         Checkout location for curl|bash installation.
   --repo-url URL            Repository URL used by curl|bash installation.
   --ref REF                 Branch or tag used by curl|bash installation.
@@ -66,25 +81,28 @@ Environment:
   ZSH_DOTFILES_REPO_URL     Same as --repo-url.
   ZSH_DOTFILES_REF          Same as --ref.
   ZSH_DOTFILES_SKIP_DEPENDENCIES=1
+  ZSH_DOTFILES_SKIP_SYSTEM_DEPENDENCIES=1
+  ZSH_DOTFILES_AUTO_INSTALL=0
+  ZSH_DOTFILES_INSTALL_OPTIONAL_TOOLS=0
   ZSH_DOTFILES_DRY_RUN=1
 
 Examples:
   ./install.sh
   ./install.sh --update
-  curl -fsSL https://raw.githubusercontent.com/canxin121/zsh-dotfiles/main/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.sh | bash
 EOF
 }
 
 log() {
-  printf '[zsh-dotfiles] %s\n' "$*"
+  printf '[%s] %s\n' "$PROJECT_NAME" "$*"
 }
 
 warn() {
-  printf '[zsh-dotfiles] warning: %s\n' "$*" >&2
+  printf '[%s] warning: %s\n' "$PROJECT_NAME" "$*" >&2
 }
 
 die() {
-  printf '[zsh-dotfiles] error: %s\n' "$*" >&2
+  printf '[%s] error: %s\n' "$PROJECT_NAME" "$*" >&2
   exit 1
 }
 
@@ -144,6 +162,597 @@ detect_platform() {
   esac
 }
 
+has_any_command() {
+  local command_name
+
+  for command_name in "$@"; do
+    if command -v "$command_name" >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+run_privileged() {
+  local uid
+
+  uid="${EUID:-}"
+  if [[ -z "$uid" ]]; then
+    uid="$(id -u)"
+  fi
+
+  if [[ "$uid" == "0" ]]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  elif command -v doas >/dev/null 2>&1; then
+    doas "$@"
+  else
+    die "Installing system packages requires root, sudo, or doas: $*"
+  fi
+}
+
+is_msys2_environment() {
+  local system
+  system="$(uname -s 2>/dev/null || printf 'unknown')"
+  [[ -n "${MSYSTEM:-}" ]] || [[ "$system" == MSYS* ]] || [[ "$system" == MINGW* ]]
+}
+
+detect_package_manager() {
+  local system
+  system="$(uname -s 2>/dev/null || printf 'unknown')"
+
+  if [[ "$system" == Darwin* ]] && command -v brew >/dev/null 2>&1; then
+    printf 'brew'
+    return 0
+  fi
+
+  if is_msys2_environment && command -v pacman >/dev/null 2>&1; then
+    printf 'pacman'
+    return 0
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    printf 'apt-get'
+  elif command -v dnf >/dev/null 2>&1; then
+    printf 'dnf'
+  elif command -v yum >/dev/null 2>&1; then
+    printf 'yum'
+  elif command -v pacman >/dev/null 2>&1; then
+    printf 'pacman'
+  elif command -v apk >/dev/null 2>&1; then
+    printf 'apk'
+  elif command -v zypper >/dev/null 2>&1; then
+    printf 'zypper'
+  elif command -v brew >/dev/null 2>&1; then
+    printf 'brew'
+  else
+    return 1
+  fi
+}
+
+MISSING_REQUIRED_COMMANDS=()
+SYSTEM_REQUIRED_PACKAGES=()
+SYSTEM_OPTIONAL_PACKAGES=()
+APT_UPDATE_DONE=0
+
+collect_missing_required_commands() {
+  local command_name
+
+  MISSING_REQUIRED_COMMANDS=()
+
+  for command_name in zsh git curl; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+      MISSING_REQUIRED_COMMANDS+=("$command_name")
+    fi
+  done
+}
+
+build_package_lists() {
+  local manager="$1"
+
+  SYSTEM_REQUIRED_PACKAGES=()
+  SYSTEM_OPTIONAL_PACKAGES=()
+
+  case "$manager" in
+    brew)
+      if ! command -v zsh >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(zsh)
+      fi
+      if ! command -v git >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(git)
+      fi
+      if ! command -v curl >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(curl)
+      fi
+
+      if ! command -v fzf >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+      fi
+      if ! command -v rg >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+      fi
+      if ! has_any_command fd fdfind; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fd)
+      fi
+      if ! has_any_command eza exa; then
+        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+      fi
+      if ! has_any_command bat batcat; then
+        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+      fi
+      if ! command -v btop >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+      fi
+      if ! command -v lazygit >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+      fi
+      if ! command -v tldr >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+      fi
+      ;;
+    apt-get)
+      SYSTEM_REQUIRED_PACKAGES+=(ca-certificates)
+      if ! command -v zsh >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(zsh)
+      fi
+      if ! command -v git >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(git)
+      fi
+      if ! command -v curl >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(curl)
+      fi
+
+      if ! command -v fzf >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+      fi
+      if ! command -v rg >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+      fi
+      if ! has_any_command fd fdfind; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fd-find)
+      fi
+      if ! has_any_command eza exa; then
+        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+      fi
+      if ! has_any_command bat batcat; then
+        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+      fi
+      if ! command -v btop >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+      fi
+      if ! command -v lazygit >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+      fi
+      if ! command -v tldr >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+      fi
+      ;;
+    dnf|yum)
+      SYSTEM_REQUIRED_PACKAGES+=(ca-certificates)
+      if ! command -v zsh >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(zsh)
+      fi
+      if ! command -v git >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(git)
+      fi
+      if ! command -v curl >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(curl)
+      fi
+
+      if ! command -v fzf >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+      fi
+      if ! command -v rg >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+      fi
+      if ! has_any_command fd fdfind; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fd-find)
+      fi
+      if ! has_any_command eza exa; then
+        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+      fi
+      if ! has_any_command bat batcat; then
+        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+      fi
+      if ! command -v btop >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+      fi
+      if ! command -v lazygit >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+      fi
+      if ! command -v tldr >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+      fi
+      ;;
+    pacman)
+      SYSTEM_REQUIRED_PACKAGES+=(ca-certificates)
+      if ! command -v zsh >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(zsh)
+      fi
+      if ! command -v git >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(git)
+      fi
+      if ! command -v curl >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(curl)
+      fi
+
+      if ! command -v fzf >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+      fi
+      if ! command -v rg >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+      fi
+      if ! has_any_command fd fdfind; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fd)
+      fi
+      if ! has_any_command eza exa; then
+        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+      fi
+      if ! has_any_command bat batcat; then
+        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+      fi
+      if ! command -v btop >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+      fi
+      if ! command -v lazygit >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+      fi
+      if ! command -v tldr >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+      fi
+      ;;
+    apk)
+      SYSTEM_REQUIRED_PACKAGES+=(ca-certificates)
+      if ! command -v zsh >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(zsh)
+      fi
+      if ! command -v git >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(git)
+      fi
+      if ! command -v curl >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(curl)
+      fi
+
+      if ! command -v fzf >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+      fi
+      if ! command -v rg >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+      fi
+      if ! has_any_command fd fdfind; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fd)
+      fi
+      if ! has_any_command eza exa; then
+        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+      fi
+      if ! has_any_command bat batcat; then
+        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+      fi
+      if ! command -v btop >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+      fi
+      if ! command -v lazygit >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+      fi
+      if ! command -v tldr >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+      fi
+      ;;
+    zypper)
+      SYSTEM_REQUIRED_PACKAGES+=(ca-certificates)
+      if ! command -v zsh >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(zsh)
+      fi
+      if ! command -v git >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(git)
+      fi
+      if ! command -v curl >/dev/null 2>&1; then
+        SYSTEM_REQUIRED_PACKAGES+=(curl)
+      fi
+
+      if ! command -v fzf >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fzf)
+      fi
+      if ! command -v rg >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(ripgrep)
+      fi
+      if ! has_any_command fd fdfind; then
+        SYSTEM_OPTIONAL_PACKAGES+=(fd)
+      fi
+      if ! has_any_command eza exa; then
+        SYSTEM_OPTIONAL_PACKAGES+=(eza)
+      fi
+      if ! has_any_command bat batcat; then
+        SYSTEM_OPTIONAL_PACKAGES+=(bat)
+      fi
+      if ! command -v btop >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(btop)
+      fi
+      if ! command -v lazygit >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(lazygit)
+      fi
+      if ! command -v tldr >/dev/null 2>&1; then
+        SYSTEM_OPTIONAL_PACKAGES+=(tealdeer)
+      fi
+      ;;
+    *)
+      die "Unsupported package manager: $manager"
+      ;;
+  esac
+
+  if ! is_true "$INSTALL_OPTIONAL_TOOLS"; then
+    SYSTEM_OPTIONAL_PACKAGES=()
+  fi
+}
+
+apt_refresh() {
+  if (( APT_UPDATE_DONE == 0 )); then
+    run_privileged apt-get update || die "apt-get update failed"
+    APT_UPDATE_DONE=1
+  fi
+}
+
+install_apt_packages() {
+  local required="$1"
+  shift
+
+  local package_name
+  local -a available_packages=()
+
+  (($#)) || return 0
+  apt_refresh
+
+  for package_name in "$@"; do
+    if command -v apt-cache >/dev/null 2>&1 && ! apt-cache show "$package_name" >/dev/null 2>&1; then
+      warn "apt package is not available on this distribution: $package_name"
+      continue
+    fi
+    available_packages+=("$package_name")
+  done
+
+  if ((${#available_packages[@]} == 0)); then
+    if is_true "$required"; then
+      die "None of the required apt packages are available"
+    fi
+    return 0
+  fi
+
+  if is_true "$required"; then
+    run_privileged apt-get install -y "${available_packages[@]}" ||
+      die "Unable to install required packages: ${available_packages[*]}"
+  elif ! run_privileged apt-get install -y "${available_packages[@]}"; then
+    warn "Some optional apt packages could not be installed; continuing"
+  fi
+}
+
+rpm_package_available() {
+  local manager="$1"
+  local package_name="$2"
+
+  "$manager" info "$package_name" >/dev/null 2>&1
+}
+
+install_rpm_packages() {
+  local manager="$1"
+  local required="$2"
+  shift 2
+
+  local package_name
+  local -a available_packages=()
+
+  (($#)) || return 0
+  for package_name in "$@"; do
+    if rpm_package_available "$manager" "$package_name"; then
+      available_packages+=("$package_name")
+    elif is_true "$required"; then
+      available_packages+=("$package_name")
+    else
+      warn "$manager package is not available on this distribution: $package_name"
+    fi
+  done
+
+  ((${#available_packages[@]})) || return 0
+  if is_true "$required"; then
+    run_privileged "$manager" install -y "${available_packages[@]}" ||
+      die "Unable to install required packages: ${available_packages[*]}"
+  elif ! run_privileged "$manager" install -y "${available_packages[@]}"; then
+    warn "Some optional $manager packages could not be installed; continuing"
+  fi
+}
+
+pacman_package_available() {
+  pacman -Si "$1" >/dev/null 2>&1
+}
+
+run_pacman() {
+  if is_msys2_environment; then
+    pacman "$@"
+  else
+    run_privileged pacman "$@"
+  fi
+}
+
+install_pacman_packages() {
+  local required="$1"
+  shift
+
+  local package_name
+  local -a available_packages=()
+
+  (($#)) || return 0
+  for package_name in "$@"; do
+    if pacman_package_available "$package_name"; then
+      available_packages+=("$package_name")
+    elif is_true "$required"; then
+      available_packages+=("$package_name")
+    else
+      warn "pacman package is not available: $package_name"
+    fi
+  done
+
+  ((${#available_packages[@]})) || return 0
+  if is_true "$required"; then
+    run_pacman -S --needed --noconfirm "${available_packages[@]}" ||
+      die "Unable to install required packages: ${available_packages[*]}"
+  elif ! run_pacman -S --needed --noconfirm "${available_packages[@]}"; then
+    warn "Some optional pacman packages could not be installed; continuing"
+  fi
+}
+
+apk_package_available() {
+  apk search -e "$1" >/dev/null 2>&1
+}
+
+install_apk_packages() {
+  local required="$1"
+  shift
+
+  local package_name
+  local -a available_packages=()
+
+  (($#)) || return 0
+  for package_name in "$@"; do
+    if apk_package_available "$package_name"; then
+      available_packages+=("$package_name")
+    elif is_true "$required"; then
+      available_packages+=("$package_name")
+    else
+      warn "apk package is not available: $package_name"
+    fi
+  done
+
+  ((${#available_packages[@]})) || return 0
+  if is_true "$required"; then
+    run_privileged apk add --no-cache "${available_packages[@]}" ||
+      die "Unable to install required packages: ${available_packages[*]}"
+  elif ! run_privileged apk add --no-cache "${available_packages[@]}"; then
+    warn "Some optional apk packages could not be installed; continuing"
+  fi
+}
+
+zypper_package_available() {
+  zypper --non-interactive search --match-exact "$1" >/dev/null 2>&1
+}
+
+install_zypper_packages() {
+  local required="$1"
+  shift
+
+  local package_name
+  local -a available_packages=()
+
+  (($#)) || return 0
+  for package_name in "$@"; do
+    if zypper_package_available "$package_name"; then
+      available_packages+=("$package_name")
+    elif is_true "$required"; then
+      available_packages+=("$package_name")
+    else
+      warn "zypper package is not available: $package_name"
+    fi
+  done
+
+  ((${#available_packages[@]})) || return 0
+  if is_true "$required"; then
+    run_privileged zypper --non-interactive install --no-recommends "${available_packages[@]}" ||
+      die "Unable to install required packages: ${available_packages[*]}"
+  elif ! run_privileged zypper --non-interactive install --no-recommends "${available_packages[@]}"; then
+    warn "Some optional zypper packages could not be installed; continuing"
+  fi
+}
+
+install_brew_packages() {
+  local required="$1"
+  shift
+
+  (($#)) || return 0
+  if is_true "$required"; then
+    brew install "$@" || die "Unable to install required Homebrew packages: $*"
+  elif ! brew install "$@"; then
+    warn "Some optional Homebrew packages could not be installed; continuing"
+  fi
+}
+
+install_system_packages() {
+  local manager="$1"
+
+  build_package_lists "$manager"
+  if is_true "$DRY_RUN"; then
+    if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
+      log "Would install required system packages with $manager: ${SYSTEM_REQUIRED_PACKAGES[*]}"
+    fi
+    if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
+      log "Would install optional CLI tools with $manager: ${SYSTEM_OPTIONAL_PACKAGES[*]}"
+    fi
+    return
+  fi
+
+  case "$manager" in
+    brew)
+      install_brew_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      install_brew_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      ;;
+    apt-get)
+      install_apt_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      install_apt_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      ;;
+    dnf|yum)
+      install_rpm_packages "$manager" true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      install_rpm_packages "$manager" false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      ;;
+    pacman)
+      install_pacman_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      install_pacman_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      ;;
+    apk)
+      install_apk_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      install_apk_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      ;;
+    zypper)
+      install_zypper_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      install_zypper_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      ;;
+    *)
+      die "Unsupported package manager: $manager"
+      ;;
+  esac
+}
+
+ensure_system_dependencies() {
+  local manager
+
+  collect_missing_required_commands
+
+  if is_true "$SKIP_DEPENDENCIES" ||
+     is_true "$SKIP_SYSTEM_DEPENDENCIES" ||
+     ! is_true "$AUTO_INSTALL_SYSTEM"; then
+    if ((${#MISSING_REQUIRED_COMMANDS[@]})); then
+      die "Missing required commands: ${MISSING_REQUIRED_COMMANDS[*]}; rerun without dependency-skip options"
+    fi
+    log "Skipping automatic system dependency installation"
+    return
+  fi
+
+  manager="$(detect_package_manager 2>/dev/null || true)"
+  if [[ -z "$manager" ]]; then
+    if ((${#MISSING_REQUIRED_COMMANDS[@]})); then
+      die "Missing required commands (${MISSING_REQUIRED_COMMANDS[*]}) and no supported package manager was found"
+    fi
+    warn "No supported package manager found; optional CLI tools will not be installed"
+    return
+  fi
+
+  log "Checking system dependencies with $manager"
+  install_system_packages "$manager"
+  hash -r 2>/dev/null || true
+
+  collect_missing_required_commands
+  if ((${#MISSING_REQUIRED_COMMANDS[@]})); then
+    die "Required commands are still missing after package installation: ${MISSING_REQUIRED_COMMANDS[*]}"
+  fi
+}
+
 shell_quote() {
   local value="$1"
   value=${value//\'/\'\\\'\'}
@@ -155,6 +764,15 @@ normalize_url() {
   url="${url%.git}"
   url="${url%/}"
   printf '%s' "$url"
+}
+
+project_url_matches() {
+  local actual="$1"
+  local expected="$2"
+
+  [[ "$(normalize_url "$actual")" == "$(normalize_url "$expected")" ]] && return 0
+  [[ "$(normalize_url "$expected")" == "$(normalize_url "$PROJECT_URL_DEFAULT")" ]] &&
+    [[ "$(normalize_url "$actual")" == "$(normalize_url "$LEGACY_PROJECT_URL_DEFAULT")" ]]
 }
 
 repo_remote_matches() {
@@ -207,19 +825,26 @@ bootstrap_source_checkout() {
 
   require_command git
 
+  if (( ! SOURCE_INSTALL_DIR_EXPLICIT )) &&
+     ! path_exists "$SOURCE_INSTALL_DIR" &&
+     path_exists "$LEGACY_SOURCE_INSTALL_DIR"; then
+    SOURCE_INSTALL_DIR="$LEGACY_SOURCE_INSTALL_DIR"
+    log "Using existing legacy source checkout: $SOURCE_INSTALL_DIR"
+  fi
+
   if path_exists "$SOURCE_INSTALL_DIR"; then
     [[ -d "$SOURCE_INSTALL_DIR/.git" && -r "$SOURCE_INSTALL_DIR/home/.zshrc" ]] || die \
-      "Install directory exists but is not a zsh-dotfiles checkout: $SOURCE_INSTALL_DIR"
+      "Install directory exists but is not a canxin-zsh checkout: $SOURCE_INSTALL_DIR"
 
     existing_remote="$(git -C "$SOURCE_INSTALL_DIR" config --get remote.origin.url 2>/dev/null || true)"
-    [[ "$(normalize_url "$existing_remote")" == "$(normalize_url "$REPO_URL")" ]] || die \
+    project_url_matches "$existing_remote" "$REPO_URL" || die \
       "Install directory belongs to a different repository: $SOURCE_INSTALL_DIR"
 
     REPO_ROOT="$(cd -P "$SOURCE_INSTALL_DIR" && pwd -P)"
     SOURCE_BOOTSTRAPPED=1
 
     if (( UPDATE_SOURCE )); then
-      log "Updating zsh-dotfiles checkout: $REPO_ROOT"
+      log "Updating canxin-zsh checkout: $REPO_ROOT"
       git -C "$REPO_ROOT" pull --ff-only
     fi
     return
@@ -229,7 +854,7 @@ bootstrap_source_checkout() {
     die "--dry-run from a remote installer requires a local checkout; run it from the repository"
   fi
 
-  log "Cloning zsh-dotfiles into $SOURCE_INSTALL_DIR"
+  log "Cloning canxin-zsh into $SOURCE_INSTALL_DIR"
   clone_repo_safely "$REPO_URL" "$SOURCE_INSTALL_DIR" --depth=1 --branch "$PROJECT_REF"
   REPO_ROOT="$(cd -P "$SOURCE_INSTALL_DIR" && pwd -P)"
   SOURCE_BOOTSTRAPPED=1
@@ -577,10 +1202,17 @@ parse_args() {
       --skip-dependencies|--no-dependencies)
         SKIP_DEPENDENCIES=1
         ;;
+      --no-system-dependencies)
+        SKIP_SYSTEM_DEPENDENCIES=1
+        ;;
+      --no-optional-tools)
+        INSTALL_OPTIONAL_TOOLS=0
+        ;;
       --install-dir)
         shift
         (($#)) || die "--install-dir requires a value"
         SOURCE_INSTALL_DIR="$1"
+        SOURCE_INSTALL_DIR_EXPLICIT=1
         ;;
       --repo-url)
         shift
@@ -613,7 +1245,9 @@ main() {
 
   parse_args "$@"
   require_command bash
+  ensure_system_dependencies
   require_command zsh
+  require_command git
 
   local_root="$(detect_local_repo || true)"
   if [[ -n "$local_root" ]]; then

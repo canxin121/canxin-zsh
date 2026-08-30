@@ -1,30 +1,32 @@
-# zsh-dotfiles
+# canxin-zsh
 
-一个跨机器的 zsh + Oh My Zsh 配置，包含 prompt、主题、插件和一些可选命令行工具的适配。
+一个跨机器的 zsh + Oh My Zsh 配置，包含 prompt、主题、插件和常用命令行工具的适配。
 
-安装器优先考虑保留用户已有配置：它不会直接替换 `~/.zshrc`、`~/.zprofile` 或 `~/.p10k.zsh`，而是在 zsh 配置末尾维护一个可重复更新的 managed block。
+安装器优先考虑保留用户已有配置：它不会直接替换 `~/.zshrc`、`~/.zprofile` 或 `~/.p10k.zsh`，而是在 zsh 配置末尾维护一个可重复更新的 managed block。历史版本使用的 `zsh-dotfiles` marker 和本地备份目录会继续兼容，以免升级时重复加载配置。
 
 ## 一键安装
 
 在 macOS、Linux、WSL、MSYS2 或 Cygwin 的 zsh/bash 环境中运行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/canxin121/zsh-dotfiles/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.sh | bash
 ```
 
 也可以先克隆后运行：
 
 ```bash
-git clone https://github.com/canxin121/zsh-dotfiles.git
-cd zsh-dotfiles
+git clone https://github.com/canxin121/canxin-zsh.git
+cd canxin-zsh
 ./install.sh
 ```
 
 远程一键安装会把本仓库放到：
 
 ```text
-${XDG_DATA_HOME:-~/.local/share}/zsh-dotfiles
+${XDG_DATA_HOME:-~/.local/share}/canxin-zsh
 ```
+
+新安装默认使用 `${XDG_DATA_HOME:-~/.local/share}/canxin-zsh`；如果检测到旧版本已经存在的 `zsh-dotfiles` checkout，安装器会继续复用它，不会重复下载或破坏已有配置。
 
 在已经克隆的目录中运行 `./install.sh` 时，则直接使用当前目录作为配置源。
 
@@ -32,38 +34,65 @@ ${XDG_DATA_HOME:-~/.local/share}/zsh-dotfiles
 
 Windows 原生 PowerShell 本身不提供 zsh，因此推荐使用 WSL。也支持已经安装 zsh 的 MSYS2 或 Cygwin。
 
-WSL Ubuntu：
+WSL Ubuntu（PowerShell 方式不要求 WSL 预先安装 `curl`）：
 
 ```bash
 sudo apt update
 sudo apt install -y git curl zsh
-curl -fsSL https://raw.githubusercontent.com/canxin121/zsh-dotfiles/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.sh | bash
 ```
 
 MSYS2：
 
 ```bash
 pacman -S --needed git curl zsh
-curl -fsSL https://raw.githubusercontent.com/canxin121/zsh-dotfiles/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.sh | bash
 ```
 
-Cygwin 用户请在 Cygwin 安装器中选择 `git`、`curl` 和 `zsh`，然后在 Cygwin 终端运行上面的命令。单独的 Git Bash 通常没有 zsh；安装器会检测到这一点并给出明确错误，不会修改配置。
+Cygwin 用户请在 Cygwin 安装器中选择 `git`、`curl` 和 `zsh`，然后在 Cygwin 终端运行上面的命令。Cygwin 的系统包需要通过 Cygwin 安装器维护；安装脚本不会猜测或替换 Cygwin 安装器。单独的 Git Bash 通常没有 zsh；安装器会检测到这一点并给出明确错误，不会修改配置。
 
 如果希望从 PowerShell 启动，仓库也提供了一个小型转发脚本：
 
 ```powershell
-irm https://raw.githubusercontent.com/canxin121/zsh-dotfiles/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/canxin121/canxin-zsh/main/install.ps1 | iex
 ```
 
-它会优先尝试 WSL，其次尝试 `bash.exe`。实际配置仍然安装在 WSL/MSYS2/Cygwin 的 zsh 环境中。
+它会先用 PowerShell 下载脚本，再优先交给 WSL，其次交给 `bash.exe`，所以 WSL/MSYS2 中不必预先安装 `curl`。实际配置仍然安装在 WSL/MSYS2/Cygwin 的 zsh 环境中。
+
+## 系统依赖自动安装
+
+默认情况下，安装器会先检测并尝试自动安装：
+
+- 必需依赖：`zsh`、`git`、`curl` 和 CA 证书；
+- 可选工具：`fzf`、`ripgrep`、`fd`、`eza`、`bat`、`btop`、`lazygit`、`tldr`（可用包名 `tealdeer` 安装）。
+
+支持的系统包管理器包括：
+
+- macOS：已安装 Homebrew 时使用 `brew`；macOS 自带的 `zsh`、`git`、`curl` 可直接使用。没有 Homebrew 时不会静默安装整套 Homebrew，只会保留可用的可选工具并给出提示；
+- Debian/Ubuntu/WSL：`apt-get`；
+- Fedora/RHEL 系：`dnf` 或 `yum`；
+- Arch/MSYS2：`pacman`；
+- Alpine：`apk`；
+- openSUSE：`zypper`。
+
+安装必需系统包时失败会停止，某个可选工具在当前发行版没有对应包时只会警告并继续。需要权限时使用现有的 `sudo` 或 `doas`，不会把密码写入文件。系统包安装和 Oh My Zsh/plugin checkout 都只在缺少时执行；已有 checkout 不会被另一个远程仓库覆盖。
+
+如果希望完全手动管理依赖，可以使用：
+
+```bash
+./install.sh --skip-dependencies       # 跳过系统包、Oh My Zsh 和插件/主题
+./install.sh --no-system-dependencies  # 只跳过系统包管理器，仍可安装 Oh My Zsh/plugin
+./install.sh --no-optional-tools       # 只安装必需系统包，不安装可选 CLI 工具
+```
 
 ## 安装器会做什么
 
 1. 检查 `bash`、`zsh`，并识别 macOS、Linux、WSL 和 Windows POSIX shell 环境。
-2. 如果缺少 Oh My Zsh，则克隆到 `$ZSH` 或默认的 `~/.oh-my-zsh`。
-3. 如果缺少本仓库使用的插件和主题，则克隆到 `$ZSH_CUSTOM`。
-4. 已存在的 Oh My Zsh、插件、主题目录会保留，不会被覆盖；不是本项目仓库的 Git checkout 也不会被自动更新。
-5. 在 zsh 配置末尾添加或更新以下 marker 之间的内容：
+2. 在支持的包管理器中补齐缺少的必需依赖和可选命令行工具。
+3. 如果缺少 Oh My Zsh，则克隆到 `$ZSH` 或默认的 `~/.oh-my-zsh`。
+4. 如果缺少本仓库使用的插件和主题，则克隆到 `$ZSH_CUSTOM`。
+5. 已存在的 Oh My Zsh、插件、主题目录会保留，不会被覆盖；不是本项目仓库的 Git checkout 也不会被自动更新。
+6. 在 zsh 配置末尾添加或更新以下 marker 之间的内容：
 
    ```text
    # >>> zsh-dotfiles managed block >>>
@@ -71,7 +100,7 @@ irm https://raw.githubusercontent.com/canxin121/zsh-dotfiles/main/install.ps1 | 
    # <<< zsh-dotfiles managed block <<<
    ```
 
-6. 如果修改已有配置，会在 `~/.config/zsh-dotfiles/backups/` 下创建权限较严格的本地备份。备份不在仓库内，也不会上传到 GitHub。
+7. 如果修改已有配置，会在 `~/.config/zsh-dotfiles/backups/` 下创建权限较严格的本地备份。备份不在仓库内，也不会上传到 GitHub。
 
 重复执行安装器是安全的：已有 managed block 会被更新，不会不断追加重复内容。
 
@@ -98,22 +127,26 @@ irm https://raw.githubusercontent.com/canxin121/zsh-dotfiles/main/install.ps1 | 
 - 如果已有配置文件是普通 symlink，安装器会保留 symlink，但会更新其目标文件，并在操作前备份内容；如果 symlink 直接指向本仓库的 `home/.zshrc`/`home/.zprofile`，则会安全地脱链，避免配置递归 source；
 - 已有可读的 `~/.p10k.zsh` 或 `POWERLEVEL9K_CONFIG_FILE` 配置优先于仓库默认 p10k 配置。
 
-如果需要完全关闭本仓库的默认依赖安装，可以使用 `--skip-dependencies`；这只接入配置，不克隆 Oh My Zsh 和插件。
+如果需要完全关闭本仓库的默认依赖安装，可以使用 `--skip-dependencies`；此时缺少必需命令会直接报错，不会修改系统或配置。
 
 ## 常用选项
 
 ```bash
 ./install.sh --update             # 更新已存在的 Oh My Zsh/插件/主题 checkout
 ./install.sh --update-source      # 更新 curl|bash 模式管理的仓库副本
-./install.sh --skip-dependencies  # 不安装 Oh My Zsh/插件/主题
+./install.sh --skip-dependencies  # 不安装系统包、Oh My Zsh/插件/主题
+./install.sh --no-system-dependencies # 不调用系统包管理器
+./install.sh --no-optional-tools  # 不安装可选 CLI 工具
 ./install.sh --dry-run            # 只显示配置修改计划；远程脚本模式需改在本地 checkout 中运行
 ```
 
 也可以使用环境变量：
 
 ```bash
-ZSH_DOTFILES_INSTALL_DIR="$HOME/.local/share/zsh-dotfiles" ./install.sh
+ZSH_DOTFILES_INSTALL_DIR="$HOME/.local/share/canxin-zsh" ./install.sh
 ZSH_DOTFILES_SKIP_DEPENDENCIES=1 ./install.sh
+ZSH_DOTFILES_AUTO_INSTALL=0 ./install.sh
+ZSH_DOTFILES_INSTALL_OPTIONAL_TOOLS=0 ./install.sh
 ```
 
 ## 本机覆盖配置

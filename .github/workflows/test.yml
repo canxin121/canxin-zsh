@@ -48,7 +48,7 @@ jobs:
 
       - name: Run real dependency installation smoke test
         env:
-          TEST_HOME: ${{ runner.temp }}/zsh-dotfiles-real-home
+          TEST_HOME: ${{ runner.temp }}/canxin-zsh-real-home
         run: |
           rm -rf "$TEST_HOME"
           mkdir -p "$TEST_HOME"
@@ -109,7 +109,7 @@ jobs:
       - name: Run real dependency installation smoke test
         shell: msys2 {0}
         env:
-          TEST_HOME: /tmp/zsh-dotfiles-real-home
+          TEST_HOME: /tmp/canxin-zsh-real-home
         run: |
           cd "$(cygpath -u "$GITHUB_WORKSPACE")"
           rm -rf "$TEST_HOME"
@@ -120,3 +120,28 @@ jobs:
           test -r "$TEST_HOME/.zprofile"
           test -r "$TEST_HOME/.oh-my-zsh/oh-my-zsh.sh"
           env -u FPATH HOME="$TEST_HOME" ZDOTDIR="$TEST_HOME" zsh -d -i -c '(( $+functions[omz] ))'
+
+  published-bootstrap:
+    name: published-bootstrap
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install bootstrap test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zsh curl
+
+      - name: Test the published one-line installer
+        env:
+          TEST_HOME: ${{ runner.temp }}/canxin-zsh-published-home
+        run: |
+          rm -rf "$TEST_HOME"
+          mkdir -p "$TEST_HOME"
+          trap 'rm -rf "$TEST_HOME"' EXIT
+          curl -fsSL "https://raw.githubusercontent.com/canxin121/canxin-zsh/${GITHUB_SHA}/install.sh" |
+            HOME="$TEST_HOME" ZDOTDIR="$TEST_HOME" XDG_CONFIG_HOME="$TEST_HOME/.config" \
+            XDG_DATA_HOME="$TEST_HOME/.local/share" ZSH_DOTFILES_SKIP_DEPENDENCIES=1 bash
+          test -r "$TEST_HOME/.zshrc"
+          test -r "$TEST_HOME/.zprofile"
+          test -r "$TEST_HOME/.local/share/canxin-zsh/home/.zshrc"

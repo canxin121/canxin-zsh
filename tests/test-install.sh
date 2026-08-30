@@ -332,6 +332,41 @@ test_remote_bootstrap() {
   '
 }
 
+test_legacy_source_checkout_is_reused() {
+  local home_dir
+  local legacy_source
+  local source_root
+  local remote_installer
+
+  home_dir="$(new_home)"
+  TEST_HOMES+=("$home_dir")
+  legacy_source="$home_dir/.local/share/zsh-dotfiles"
+  remote_installer="$home_dir/remote-install.sh"
+
+  mkdir -p "$legacy_source/home" "$legacy_source/zsh/rc"
+  cp "$TEST_ROOT/home/.zshrc" "$legacy_source/home/.zshrc"
+  cp "$TEST_ROOT/home/.zprofile" "$legacy_source/home/.zprofile"
+  cp "$TEST_ROOT/zsh/rc/common.zsh" "$legacy_source/zsh/rc/common.zsh"
+  git -C "$legacy_source" init -q
+  git -C "$legacy_source" remote add origin https://github.com/canxin121/zsh-dotfiles.git
+  cp "$INSTALLER" "$remote_installer"
+  chmod +x "$remote_installer"
+  source_root="$(cd -P "$legacy_source" && pwd -P)"
+
+  env \
+    -u ZSH \
+    -u ZSH_CUSTOM \
+    -u ZSH_THEME \
+    HOME="$home_dir" \
+    ZDOTDIR="$home_dir" \
+    XDG_DATA_HOME="$home_dir/.local/share" \
+    ZSH_DOTFILES_SKIP_DEPENDENCIES=1 \
+    "$remote_installer"
+
+  [[ ! -e "$home_dir/.local/share/canxin-zsh" ]] || fail "legacy checkout was not reused"
+  assert_file_contains "$home_dir/.zshrc" "$source_root/home/.zshrc"
+}
+
 bash -n "$INSTALLER"
 for zsh_file in \
   "$TEST_ROOT/home/.zprofile" \
@@ -350,5 +385,6 @@ test_symlink_to_tracked_source_is_detached
 test_existing_p10k_config_is_not_overridden
 test_dry_run_does_not_write
 test_remote_bootstrap
+test_legacy_source_checkout_is_reused
 
 printf '%s\n' 'all installer tests passed'
