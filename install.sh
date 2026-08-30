@@ -690,28 +690,52 @@ install_system_packages() {
 
   case "$manager" in
     brew)
-      install_brew_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
-      install_brew_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
+        install_brew_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      fi
+      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
+        install_brew_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      fi
       ;;
     apt-get)
-      install_apt_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
-      install_apt_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
+        install_apt_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      fi
+      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
+        install_apt_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      fi
       ;;
     dnf|yum)
-      install_rpm_packages "$manager" true "${SYSTEM_REQUIRED_PACKAGES[@]}"
-      install_rpm_packages "$manager" false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
+        install_rpm_packages "$manager" true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      fi
+      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
+        install_rpm_packages "$manager" false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      fi
       ;;
     pacman)
-      install_pacman_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
-      install_pacman_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
+        install_pacman_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      fi
+      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
+        install_pacman_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      fi
       ;;
     apk)
-      install_apk_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
-      install_apk_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
+        install_apk_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      fi
+      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
+        install_apk_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      fi
       ;;
     zypper)
-      install_zypper_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
-      install_zypper_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      if ((${#SYSTEM_REQUIRED_PACKAGES[@]})); then
+        install_zypper_packages true "${SYSTEM_REQUIRED_PACKAGES[@]}"
+      fi
+      if ((${#SYSTEM_OPTIONAL_PACKAGES[@]})); then
+        install_zypper_packages false "${SYSTEM_OPTIONAL_PACKAGES[@]}"
+      fi
       ;;
     *)
       die "Unsupported package manager: $manager"
